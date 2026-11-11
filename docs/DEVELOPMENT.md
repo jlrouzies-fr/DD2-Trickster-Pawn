@@ -819,7 +819,7 @@ Raw facts and the probes are in NOTES.md, "Run of 2026-11-10, 20:36-22:35".
   with it).
 - **Regression on the final build:** started from the user's 0.2.2-era config.json (no defaults file: the new settings came in at their defaults, read back live as Rally 12 s / 0.75, Delusion 0.5, Screen 0.45, effigy 3-10.5 m) and the save with the hired Fighter. Fight with the Fighter, 150 s: Rally 39 % of the battle samples, 11 casts, lowest stamina 30 %, 0 Job09 actions on the Fighter in 113 samples. 40 s out of battle: no cast. Title return, 30 s watched, second load, 60 s fight; `disable()` (job 3) and `enable()`, 60 s fight; Latching Effigy with the test skill set, 240 s (4 casts, none latched: one aimed at a goblin 1.3 m lower, three unaimed; she ran out of stamina three times, 8 s in all, with the effigy floor still at 0.4: a cast costs 46 %, the floor is 0.6 now). No error line in the session. After the floor change: a fresh launch and a solo fight, 130 s of battle: Rally 36 %, stance 31 %, 15 casts, lowest stamina 23 %, no death, no error line. Not re-run after the last two edits (a default number and a comment): the fights with the Fighter, title return, disable / enable.
 
-### v48h (0.2.5 as released): the effigy rule built from the game's own target conditions (2026-11-11, 11:34-12:30)
+### v48h (0.2.5 as built for release; not uploaded): the effigy rule built from the game's own target conditions (2026-11-11, 11:34-12:30)
 
 - **Where the answer was.** v48g's Lua window ("she faces an enemy in range") could not stop unaimed casts, because
   the game picks the rule's target. The offline list of condition types in the vanilla packs
@@ -1073,7 +1073,10 @@ just stuck, at least the 3d model, but she moves invisible". Then: "ok we have t
   was in that build, and the capture camera was armed). **So: no clip of today proves how a dust swing looks to a
   player, and "the short swing is a flick of the wrist" (v48k) may be the same artefact.** Before anything else:
   film through the game's own camera, the Arisen turned to the pawn.
-- **State of the versions.** 0.2.5 is the released one. v48j (8346a88) is the last 0.2.6 build that went through
+- **State of the versions.** On Nexus: 0.2.2 only (the user's upload, "Version 1"). 0.2.3, 0.2.4 and 0.2.5 were
+  built into `mods-src/release/` and never uploaded (I wrote "0.2.5 is the released one" here and told the user so;
+  the user corrected it). 0.2.5 (`PawnTrickster_0.2.5/PawnTrickster.zip` = the script of commit 6c2f7f8) is the last
+  build that is finished and tested and has none of today's dust work. v48j (8346a88) is the last 0.2.6 build that went through
   the full regression with a hired pawn. v48k and v48l (HEAD, installed) passed fights by the numbers; nobody
   watched them in the game. v48k destroys a shell that belongs to a running action, v48l does not (hand throw).
 
