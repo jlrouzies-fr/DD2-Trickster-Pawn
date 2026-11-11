@@ -1,0 +1,1 @@
+PawnTrickster.heal_player()

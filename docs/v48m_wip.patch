@@ -1,0 +1,167 @@
+diff --git a/mods-src/PawnHybridAI/trickster/PawnTrickster.lua b/mods-src/PawnHybridAI/trickster/PawnTrickster.lua
+index c067da6..b580f0c 100644
+--- a/mods-src/PawnHybridAI/trickster/PawnTrickster.lua
++++ b/mods-src/PawnHybridAI/trickster/PawnTrickster.lua
+@@ -33,8 +33,9 @@
+ --      is written after the game's calculation (HitController.calcDamageValue), and the hate entry that shell adds
+ --      for its thrower is left out (HateSystem.addHateParam). Latching Effigy: when the game's incense leaves her
+ --      hand the script throws a second one at the target's legs (the game aims at a point that is over a goblin).
+---      v48l (0.2.6): the dust attack is the game's own throw of smoke (Job09_ThrowSmoke): a real swing of the censer,
+---      and the ball leaves when the game's own thrown smoke leaves the hand; PT.dust_test() for clips.
++--      v48m (0.2.6): the dust attack swings the censer round on its chain (Job09_MoveSmokeAttack); the ball leaves when
++--      the swing's own smoke does. PT.dust_test() for clips.
++--      (v48l used the throw by hand, Job09_ThrowSmoke.)
+ --      v48k (0.2.6): the smoke of a dust swing made minimal: the game's own smoke cloud of the censer swing (a shell
+ --      of its own) is taken out, the impact cloud and the censer's swing smoke fade out and are removed after 0.3 s.
+ --      only_slot (a test setting) holds every slot but one.
+@@ -146,9 +147,9 @@ local cfg = {
+     dust = true,            -- v48i: the idle attack: a censer swing from a distance that throws a ball of incense smoke at the enemy she faces
+     dust_near = 4.0, dust_far = 14.0, dust_cooldown = 4.0, -- where the rule's target has to be (m), seconds between two
+     dust_aim_deg = 0,       -- above 0: the rule only takes a target within this many degrees of her facing (30 gave one swing a minute: idle, she rarely faces an enemy)
+-    dust_delay = 0.35, dust_window = 1.1, -- (only with dust_action "Job09_ShortSmokeAttack") the ball leaves the censer between these two moments of the swing (s), as soon as the pawn faces the target
+-    dust_action = "Job09_ThrowSmoke", -- v48l: the action of the dust attack. The game's own throw of smoke (the Arisen's Drifting Brume): the pawn swings the censer and the ball leaves when the game's own thrown smoke leaves the hand (0.7 s in). "Job09_ShortSmokeAttack" = the flick of the wrist of v48i-k
+-    dust_release_wait = 1.6, -- v48l: no ball if the game's throw has not come this long after the swing began (the swing was cut)
++    dust_action = "Job09_MoveSmokeAttack", -- v48m: the action of the dust attack: the censer swung round on its chain (the Arisen's swing while walking). The ball leaves when the swing's own smoke does (0.7 s in). Others: "Job09_DashSmokeAttack" (a low sweep), "Job09_ShortSmokeAttack" (a flick of the wrist, v48i-k), "Job09_ThrowSmoke" (thrown by hand, v48l)
++    dust_release_wait = 1.6, -- v48l: no ball if the swing's own smoke has not come this long after the swing began (the swing was cut)
++    -- (v48m tried ending the swing early with a request for "NormalLocomotion" 0.9 s after the ball: the pawn's model then stood frozen where it was while the pawn itself went on moving, unseen. Never request the walk on a pawn.)
+     dust_face_deg = 25.0, dust_turn_rate = 420.0, -- "faces" in degrees; how fast the script turns her to the target during the swing (degrees a second, 0 = not at all)
+     dust_damage = 0,        -- damage of a hit; 0 = dust_damage_base + dust_damage_level x the pawn's level
+     dust_damage_base = 20.0, dust_damage_level = 5.0,
+@@ -160,7 +161,7 @@ local cfg = {
+     dust_swing_scale = 0.15, -- v48k: size of the censer's own smoke during the dust swing
+     dust_fx_alpha = 1.0, dust_fx_speed = 1.0, -- v48k: those effects are also this opaque (1 = as the game draws them) and played this fast
+     dust_hit_life = 0.5, dust_swing_life = 0.3, -- v48k: the impact cloud and the censer's swing smoke fade out and are removed after this many seconds (0 = left to play out). A smoke cloud grows with its age and the scale above does not change the size of its particles: this is what keeps it small
+-    dust_swing_shell = false, -- v48k: the censer swing throws the game's own smoke cloud as well (a shell of its own: three seconds of thick smoke and a burst where it lands). false = taken out during a dust swing
++    dust_swing_shell = false, -- v48k, v48m: the censer swing makes the game's own smoke cloud as well (a shell of its own: three seconds of thick smoke and a burst where it lands). false = its smoke is ended as soon as the game creates it (the shell itself is left alone: destroying it froze the pawn's model). true = the cloud is shown
+     dust_fool = true,       -- v48j: an enemy hit by the ball lets go of the party's pawns and goes for the decoy (only with a decoy out)
+     dust_fool_seconds = 6.0, -- for how long
+     dust_fool_big = false,  -- true: big enemies (more HP than big_enemy_hp) are fooled as well
+@@ -263,7 +264,7 @@ local SKILL_ACTION = { [92] = "Job09_CastSmokeWall", [93] = "Job09_CastSmokeGrou
+                        [97] = "Job09_CastRageFregrance", [98] = "Job09_CastDetectFregrance", [99] = "Job09_CastSmokeDragon",
+                        [118] = "Job09_CastHealingSmoke", [120] = "Job09_PrepareSmokeGiants" }
+ local ACT = { normal = "Job09_ShortSmokeAttack", heavy = "Job09_SummonDecoy", transfer = "Job09_Transfer", unsummon = "Job09_Unsummon" }
+-ACT.dust = (type(cfg.dust_action) == "string" and cfg.dust_action ~= "") and cfg.dust_action or "Job09_ThrowSmoke" -- v48l
++ACT.dust = (type(cfg.dust_action) == "string" and cfg.dust_action ~= "") and cfg.dust_action or "Job09_MoveSmokeAttack" -- v48l, v48m
+ -- action hashes are murmur3-32 of the UTF-16LE name with seed 0xFFFFFFFF (checked against the four hashes read live:
+ -- Job09_ShortSmokeAttack 3838103887, Job09_SummonDecoy 2970940001, Job09_Transfer 607844537, Job09_Unsummon 2210594192)
+ local function action_hash(name)
+@@ -2691,16 +2692,25 @@ function V.shell_hooks()
+                         PT.state.rethrow_t = now; PT.state.rethrow_hash = id; PT.state.rethrow_rid = rid; PT.state.rethrow_due = now -- thrown from V.tick, not from inside the game's shell registration
+                     end
+                 elseif sw and ids == V.sh_dust_s then
+-                    -- v48l: the game's own thrown smoke of the dust action leaving the hand: that is the moment of the
+-                    -- ball. The game's one (thrown straight ahead, no target) is taken out; V.tick throws the script's.
++                    -- v48l: with "Job09_ThrowSmoke" the game's own thrown smoke leaving the hand: that is the moment of
++                    -- the ball. The game's one (thrown straight ahead, no target) is taken out; V.tick throws the script's.
+                     if PT.state.dust_due and not PT.state.dust_release then
+                         PT.state.swing_kill = PT.state.swing_kill or {}; PT.state.swing_kill[#PT.state.swing_kill + 1] = rid
+                         PT.state.dust_release = now; PT.state.dust_releases = (PT.state.dust_releases or 0) + 1
+                     end
+-                elseif sw and cfg.dust_swing_shell ~= true and not (V.sh_effigy and V.sh_effigy[ids]) then
+-                    -- v48k: the swing's own smoke cloud (seen: parameter id 1754224672, one a swing). Taken out by
+-                    -- V.tick on the next frame, not from inside the game's shell registration.
+-                    PT.state.swing_kill = PT.state.swing_kill or {}; PT.state.swing_kill[#PT.state.swing_kill + 1] = rid
++                elseif sw and not (V.sh_effigy and V.sh_effigy[ids]) then
++                    -- v48m: a censer swing's own smoke cloud: the moment it is registered is the moment the censer's
++                    -- smoke goes out, half a metre in front of the pawn's chest: the ball goes then, from there
++                    if PT.state.dust_due and not PT.state.dust_release then
++                        PT.state.dust_release = now; PT.state.dust_releases = (PT.state.dust_releases or 0) + 1
++                    end
++                    -- v48k destroyed this shell (parameter id 1754224672) on the next frame. THAT FROZE THE PAWN'S MODEL:
++                    -- from the first dust swing on it stood where it was, in one pose, while the pawn itself went on
++                    -- moving and casting unseen (found in v48m, on clips of a still target). The shell is left alone
++                    -- now; its smoke is ended where the game creates it (kind "cloud" in the effect hooks).
++                    if cfg.dust_swing_shell_destroy == true then -- (test only, to show that freeze again)
++                        PT.state.swing_kill = PT.state.swing_kill or {}; PT.state.swing_kill[#PT.state.swing_kill + 1] = rid
++                    end
+                 end
+             end)
+         end, function(r) return r end)
+@@ -2746,7 +2756,8 @@ function V.shell_hooks()
+                 if cfg.dust_no_aggro == false or not V.dust_p25 or not V.dust_live or os.clock() > V.dust_live then return end
+                 local skip = false
+                 pcall(function()
+-                    if sdk.to_int64(args[4]) ~= V.dust_p25 then return end
++                    local hp = sdk.to_int64(args[4])
++                    if hp ~= V.dust_p25 and hp ~= V.dust_p24 then return end -- (25 the thrown smoke, 24 the censer swing's own smoke)
+                     local g = sdk.to_managed_object(args[3])
+                     if g and g:get_address() == V.dust_owner then skip = true; PT.state.dust_hate_skips = (PT.state.dust_hate_skips or 0) + 1 end
+                 end)
+@@ -2780,10 +2791,14 @@ function V.shell_hooks()
+                     if V.dust_live and os.clock() <= V.dust_live then
+                         pcall(function()
+                             local sh = sdk.to_managed_object(args[2]); local ow = sh and sh:get_field("<Owner>k__BackingField")
+-                            mine = (ow and ow:get_address() == V.dust_owner and tostring(sh:get_field("<ShellParamId>k__BackingField")) == V.sh_dust_s) and true or false
++                            if not (ow and ow:get_address() == V.dust_owner) then return end
++                            local ids = tostring(sh:get_field("<ShellParamId>k__BackingField"))
++                            if ids == V.sh_dust_s then mine = true
++                            elseif V.swing_fx and cfg.dust_swing_shell ~= true and not (V.sh_effigy and V.sh_effigy[ids]) then mine = "cloud" end -- v48m: the censer swing's own smoke cloud
+                         end)
+                     end
+-                    stk[#stk + 1] = mine and (V.fx_kind or kind) or false -- (the outer request's kind is kept: the impact asks requestEffect for its parts)
++                    if mine == "cloud" then stk[#stk + 1] = "cloud"
++                    else stk[#stk + 1] = mine and (V.fx_kind or kind) or false end -- (the outer request's kind is kept: the impact asks requestEffect for its parts)
+                     if mine then V.fx_kind = stk[#stk] end
+                 end, function(r)
+                     local stk = V.fx_stack; stk[#stk] = nil
+@@ -2810,7 +2825,8 @@ function V.shell_hooks()
+                             local g = arr:get_element(i)
+                             if g then
+                                 local f, life, what = nil, 0, nil
+-                                if kind == "hit" then f = cfg.dust_hit_scale or 0.4; life = cfg.dust_hit_life or 0.5; what = "dust_fx"
++                                if kind == "cloud" then f = 0.1; life = cfg.dust_cloud_life or 0.05; what = "dust_fx_cloud" -- v48m: the swing's own smoke cloud and its burst: gone on their second frame
++                                elseif kind == "hit" then f = cfg.dust_hit_scale or 0.4; life = cfg.dust_hit_life or 0.5; what = "dust_fx"
+                                 elseif kind then f = cfg.dust_trail_scale or 1.0; what = "dust_fx"
+                                 elseif tostring(g:call("get_Name")) == sw.name then
+                                     local par = g:call("get_Transform"):call("get_Parent")
+@@ -2972,6 +2988,7 @@ function V.dust_fire(c, target, ang, d)
+     V.dust_thrown = { ch = target, t = now }; V.fx_stack = {}; V.fx_kind = nil
+     V.dust_owner = c.chara:call("get_GameObject"):get_address()
+     pcall(function() local p25 = sdk.get_managed_singleton("app.HateManager"):call("getSendHateParam(app.HateSendTypeID)", 25); V.dust_p25 = p25 and p25:get_address() end)
++    pcall(function() local p24 = sdk.get_managed_singleton("app.HateManager"):call("getSendHateParam(app.HateSendTypeID)", 24); V.dust_p24 = p24 and p24:get_address() end)
+     for a, t in pairs(V.dust_shells) do if now - t > 15.0 then V.dust_shells[a] = nil end end
+     local rise = 0.0; pcall(function() rise = pos_of(target).y - pos_of(c.chara).y end)
+     local rid = V.throw(c, V.sh_dust, target, (cfg.dust_aim_height or 0.7) + math.max(0.0, math.min(2.0, rise)) * 0.3) -- (a ball aimed low at a target up a slope hit the ground half way)
+@@ -3017,24 +3034,23 @@ function V.on_action(c, act)
+     local forced = PT.state.dust_force and now < PT.state.dust_force -- (PT.dust_test: a swing asked for by a test)
+     if act == ACT.dust and PT.state.decs and PT.state.decs.dust and (forced or V.running(c) == "dust") then
+         PT.state.dust_force = nil; PT.state.dust_release = nil
+-        if ACT.dust == ACT.normal then
+-            PT.state.dust_due = now + (cfg.dust_delay or 0.35); PT.state.dust_until = now + (cfg.dust_window or 1.1)
+-        else
+-            -- v48l: the ball goes when the game's own thrown smoke of this action is registered (the registShell hook
+-            -- sets dust_release); until then the pawn is turned to its target
+-            PT.state.dust_due = now + 99.0; PT.state.dust_until = now + (cfg.dust_release_wait or 1.6)
+-        end
++        -- v48l, v48m: the ball goes when the swing's own smoke shell is registered (the registShell hook sets
++        -- dust_release); until then the pawn is turned to its target
++        PT.state.dust_due = now + 99.0; PT.state.dust_until = now + (cfg.dust_release_wait or 1.6)
+         PT.state.dust_target = nil; PT.state.dust_turn_t = now; PT.state.dust_swings = (PT.state.dust_swings or 0) + 1
+         pcall(function()
+             V.shell_data(); V.shell_hooks()
+             local go = c.chara:call("get_GameObject")
+             -- v48k: for 2.2 s the censer's smoke of this swing is made small and short, and the swing's own smoke shell is taken out
+-            V.swing_fx = { t = now + 2.2, name = "effect_" .. tostring(go:call("get_Name")) }
++            V.swing_fx = { t = now + 6.0, name = "effect_" .. tostring(go:call("get_Name")) }
+             -- v48l: the game's own ball of this swing counts as a dust ball from its first frame (its effects, no hate)
+             V.dust_live = now + 6.0; V.dust_owner = go:get_address()
+         end)
+     end
+ end
++-- For tests and captures: another action for the dust swing, without a restart (the rule the game picks keeps the
++-- action it was built with; PT.dust_test and the script's own handling follow this one)
++function PT.dust_action(name) if type(name) == "string" and name ~= "" then ACT.dust = name end; return ACT.dust end
+ -- For tests and captures (tools/lua/dust_now.lua): the dust swing now, whatever the gates say: the censer swing where
+ -- the pawn stands, the turn to an enemy in reach and the ball, exactly as when the game picks the dust rule.
+ function PT.dust_test()
+@@ -3086,7 +3102,9 @@ function V.tick(c)
+     if st.dust_due then
+         if last_action ~= ACT.dust then st.dust_due = nil -- the swing was cut
+         else
+-            if st.dust_release then st.dust_release = nil; st.dust_due = now; st.dust_until = now end -- v48l: the game's throw just left the hand: the ball now
++            if st.dust_release then -- v48l: the swing's own smoke just went out: the ball now
++                st.dust_release = nil; st.dust_due = now; st.dust_until = now
++            end
+             local okd, done = pcall(V.dust_step, c, now)
+             if not okd and not st.dust_err then st.dust_err = true; log("dust error:", done) end
+             if not okd or done or now >= st.dust_until + 0.1 then st.dust_due = nil; st.dust_target = nil end

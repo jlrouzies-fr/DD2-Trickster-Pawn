@@ -1,0 +1,8 @@
+-- TEST (read only): the dust ball and the second effigy incense: counters of the mod, the pawn's level, live settings
+local PT = PawnTrickster; local st = PT.state; local c = st.ctx
+local lv = "?"; pcall(function() lv = c.chara:call("get_Context"):get_field("HumanStatusContext"):get_field("_Level") end)
+out(string.format("dust: swings picked %s, balls thrown %s, hits %s, hate entries left out %s, swings with no enemy in front %s, enemies fooled %s (now %s, found by %s, wiped at %s ranking sorts), effect objects resized: ball %s, censer %s, cut short %s, swing smoke shells taken out %s | effigy: second incense thrown %s | pawn level %s | dust slot %s, gate blocked %s",
+  tostring(st.dust_swings or 0), tostring(st.dust_shots or 0), tostring(st.dust_hits or 0), tostring(st.dust_hate_skips or 0), tostring(st.dust_blank or 0), tostring(st.dust_fooled or 0), tostring(st.fools ~= nil), tostring(st.fool_src), tostring(st.fool_sorts or 0), tostring(st.dust_fx or 0), tostring(st.dust_fx_swing or 0), tostring(st.dust_fx_cut or 0), tostring(st.dust_swing_shells or 0), tostring(st.rethrows or 0), tostring(lv),
+  tostring(st.decs and st.decs.dust ~= nil), tostring(st.gate_blocked and st.gate_blocked.dust)))
+out(string.format("settings: dust %s, band %.1f-%.1f m, %s degrees, cooldown %.1f, damage %s (base %s + %s x level), no aggro %s, effigy_rethrow %s, effigy_small_rise %s",
+  tostring(PT.cfg.dust), PT.cfg.dust_near, PT.cfg.dust_far, tostring(PT.cfg.dust_aim_deg), PT.cfg.dust_cooldown, tostring(PT.cfg.dust_damage), tostring(PT.cfg.dust_damage_base), tostring(PT.cfg.dust_damage_level), tostring(PT.cfg.dust_no_aggro), tostring(PT.cfg.effigy_rethrow), tostring(PT.cfg.effigy_small_rise)))
