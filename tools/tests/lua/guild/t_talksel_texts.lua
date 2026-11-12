@@ -1,0 +1,6 @@
+local gm = sdk.get_managed_singleton("app.GuiManager"); local ts = gm:get_field("TalkSelect")
+out("IsDisp", tostring(ts:get_field("IsDisp")), "DispMax", tostring(ts:get_field("DispMax")), "Selected", tostring(ts:get_field("SelectedIndex")))
+local sc = ts:get_field("ScrCtrl"); local items = sc:get_field("ItemList"); local infos = sc:get_field("InfoList")
+pcall(function() out("InfoList count", infos:call("get_Count")) end)
+pcall(function() for i = 0, infos:call("get_Count")-1 do local inf = infos:call("get_Item", i); local fs = {}; for _, f in ipairs(inf:get_type_definition():get_fields()) do local v; pcall(function() v = inf:get_field(f:get_name()) end); if type(v) ~= "userdata" then fs[#fs+1] = f:get_name() .. "=" .. tostring(v) end end; out("info", i, table.concat(fs, " ")) end end)
+pcall(function() for i = 0, items:get_size()-1 do local it = items:get_element(i); local t = "?"; pcall(function() for _, f in ipairs(it:get_type_definition():get_fields()) do if f:get_type():get_name() == "Text" then local tx = it:get_field(f:get_name()); if tx then t = tostring(tx:call("get_Message")); break end end end end); out("item", i, t) end end)

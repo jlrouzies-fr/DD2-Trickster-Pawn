@@ -1059,7 +1059,10 @@ just stuck, at least the 3d model, but she moves invisible". Then: "ok we have t
   +1.5 s) does replace the action.
 - **The patch**: `dust_action = "Job09_MoveSmokeAttack"`; the ball goes when the swing's own shell is registered;
   the swing's shell is no longer destroyed, its effects are ended instead (kind "cloud"); `PT.dust_action(name)`.
-- **The unsolved problem: the pawn's model.** In most clips of this work the pawn's model either stood still in one
+- **Solved on 2026-11-12 (see "v48n (0.2.8)" below): none of the three causes named here.** The script turned the
+  pawn to its target with `Transform.set_Rotation` from `re.on_frame`, i.e. while the scene is locked for rendering,
+  and one such write is enough to leave the model where it stood. It was in the build since v48i.
+- **The unsolved problem (as written on 2026-11-11): the pawn's model.** In most clips of this work the pawn's model either stood still in one
   pose where it had been, or was not drawn, while the ball left from where the pawn really was. Three causes were
   named and none is established:
   1. the request for `NormalLocomotion` that ended the swing early (first build of the patch): removed, the clips
@@ -1069,16 +1072,121 @@ just stuck, at least the 3d model, but she moves invisible". Then: "ok we have t
      camera sees; a character outside the game's own view may not be animated or placed. This fits every clip (the
      pawn was drawn and moving whenever the Arisen's camera happened to look at it) and was not tested: the one take
      through the game's own camera (`--nocam`, `tools/work/inview.lua`) did not have the pawn in the picture.
-  The user saw the stuck model in the game window themselves, during a run of the first build of the patch (cause 1
+  The author saw the stuck model in the game window themselves, during a run of the first build of the patch (cause 1
   was in that build, and the capture camera was armed). **So: no clip of today proves how a dust swing looks to a
   player, and "the short swing is a flick of the wrist" (v48k) may be the same artefact.** Before anything else:
   film through the game's own camera, the Arisen turned to the pawn.
-- **State of the versions.** On Nexus: 0.2.2 only (the user's upload, "Version 1"). 0.2.3, 0.2.4 and 0.2.5 were
-  built into `mods-src/release/` and never uploaded (I wrote "0.2.5 is the released one" here and told the user so;
-  the user corrected it). 0.2.5 (`PawnTrickster_0.2.5/PawnTrickster.zip` = the script of commit 6c2f7f8) is the last
+- **State of the versions.** On Nexus: 0.2.2 only (the author's upload, "Version 1"). 0.2.3, 0.2.4 and 0.2.5 were
+  built into `mods-src/release/` and never uploaded (I wrote "0.2.5 is the released one" here and told the author so;
+  the author corrected it). 0.2.5 (`PawnTrickster_0.2.5/PawnTrickster.zip` = the script of commit 6c2f7f8) is the last
   build that is finished and tested and has none of today's dust work. v48j (8346a88) is the last 0.2.6 build that went through
   the full regression with a hired pawn. v48k and v48l (HEAD, installed) passed fights by the numbers; nobody
   watched them in the game. v48k destroys a shell that belongs to a running action, v48l does not (hand throw).
+
+### 0.2.6 packed for Nexus, and a tool that pushes it (2026-11-11, 19:00-19:10)
+
+Asked by the author once it was clear that 0.2.6 has the throw by hand: pack 0.2.6, update the page text, upload.
+
+- **Release folder** `mods-src/release/PawnTrickster_0.2.6/` (built by `mods-src/PawnHybridAI/tools/
+  release_trickster_026.py`): `PawnTrickster.zip` (script and readme of HEAD), `description.bbcode.txt` and
+  `CHANGELOG.txt` reworded for the throw by hand, and `PawnTrickster_CHANGELOG.txt`: the Nexus changelog in the
+  Ink & Iron format (a title line, then one short "- Added: / Fixed: / Changed:" line per change), covering
+  everything since 0.2.2, the version on the page. The shipped readme no longer offers the censer swings as
+  `dust_action`.
+- **`mods-src/PawnHybridAI/tools/nexus_upload_dd2.py trickster`**: new version of the file that is already on the
+  page (`POST /v3/mod-files/{id}/versions`, `archive_existing_file`), then the changelog entry. It imports the
+  Witcher project's `nexus_upload_inkiron.py` and runs with that project's venv Python. `--dry-run` (no network),
+  `--check` (read only), nothing is sent without `--go`. The key is read from `NEXUS_API_KEY` (machine environment)
+  and never shown. `--nexus-version` gives the label on Nexus when it is not the release's number.
+- **The page** (read with `--check`): dragonsdogma2/mods/2545 "Trickster Pawn (Experimental)", version "1", one
+  active file, id 8357808, "PawnTrickster", one version, uploaded 2026-11-10 20:09. Not uploaded by me: the version
+  label is the author's decision (the page says "1", the release is 0.2.6), and so is the go. The page description is
+  not reachable through this API: `description.bbcode.txt` is pasted by hand.
+- **Version numbers on Nexus are not ours** (asked by the author). The page counts 1, 2, 3; 0.x.y are local build numbers. Build 0.2.2 is
+  version 1; this build goes up as version 2. The upload tool takes the page's version + 1 (or `nexus_versions` in
+  the script, or `--nexus-version`) and refuses a label that looks like 0.x.y; the description speaks of "version 2";
+  the shipped readme says which Nexus version it is; `CHANGELOG.txt` (local, one line per build) is not posted.
+- **Uploaded on the author's go, 2026-11-11 19:05:** `nexus_upload_dd2.py trickster --go`: build 0.2.6
+  added as version 2 of file 8357808 ("PawnTrickster"), the old version archived by Nexus, changelog entry "2" posted
+  (10 lines). Checked right after through the same API: page version 2, the file has 2 versions, 1 archived. Nexus'
+  public search still answered "version 1" a minute later (its index lags). The page description was not changed:
+  `description.bbcode.txt` is for the author to paste. This build is the throw by hand, not watched in the game.
+
+### v48n (0.2.8): the stuck model found and fixed, skills without a reload (2026-11-12, 08:55-10:30)
+
+The author gave a four-hour slot. First the 0.2.7 panel was looked at on screen (the checkbox is there; with logs off
+the log keeps "not found" lines and guarded errors with their stack). Then the open problem of v48m.
+
+- **What it was.** `V.dust_step` turned the pawn to its target during a smoke throw with
+  `Transform.set_Rotation`, from the frame callback. `re.on_frame` runs between the engine stages `LockScene` and
+  `EndRendering`; a transform written inside that window keeps the copy the renderer reads, and that copy is not
+  refreshed any more. The pawn's model then stays drawn where the write happened, still animated, and the pawn
+  itself (position, collisions, shells, AI) goes on without a visible body; the next such write moves the model to
+  the pawn's place of that moment. One write is enough. It was in every build since v48i (0.2.6, on Nexus as
+  version 2), whenever the pawn had to turn more than 2 degrees for a throw.
+- **How it was found.** The author, watching the test scene, said the test itself seemed to freeze the characters' models. A record of the pawn's hands during a throw put them 10.8 m from the pawn's
+  root. From there: (1) the same read is right from the console and wrong inside `re.on_frame`; (2) one sample per
+  engine stage: `Transform.get_WorldMatrix` equals `get_Position` up to pre-`LockScene`, is stale from
+  pre-`WaitRendering` to `EndRendering`, and right again after; (3) a camera pointed at the stale place shows the
+  model, a camera behind the real place shows nobody; (4) on a clean pawn, every step of my tests replayed one at a
+  time with that read after each (warps of every kind, the capture camera in its three modes, the frozen dummy,
+  recorders, a bad action name): all clean; a quick "place, then throw" loop: stale at the first cycle; (5) a fresh
+  launch, one rotation write from `re.on_frame`, a move: 11.69 m apart.
+- **The fix.** `V.dust_step` stores the yaw it wants (`st.dust_yaw`); `V.turn_apply`, called from
+  `re.on_pre_application_entry("LateUpdateBehavior")`, writes it. Measured on the fixed build: the pawn turned
+  110 degrees away from a frozen goblin and asked to throw: ball thrown 1 degree off its facing, then the pawn
+  moved: 0.02-0.05 m between root and hip inside the lock, 4 of 4; 12 reads during a 120 s goblin fight and 7 during
+  a 150 s one: 0.01-0.17 m.
+- **Wrong turns of this run**, for the record: the game's own hiding of characters outside its camera
+  (`InCameraChecker`, `CharacterMeshVisibleToggler`, motion every fourth frame) looked like the cause for twenty
+  minutes; so did the pawn's occlusion volume, whose box sat at the stale place (it follows the same render copy);
+  so did my short warp. A goblin as a clean test subject proved nothing: the write that breaks the pawn was never
+  made on it.
+- **Skills without a reload** (`V.skills_changed`, `skill_watch`): the rules are built for the Job09 skills equipped
+  at that moment (`st.built_sig`). When the equipped set differs from it for 4 s, out of battle, with no menu and no
+  talk open, the pawn is set up again the way a party change does it. From the console (the calls of the mod's debug
+  path): Latching Effigy in place of Delusory Screen gave the effigy rule and dropped the screen rule 26 s later;
+  with the pause menu open nothing happened for 16 s, and the setup ran 5 s after it closed. The guild's own menu was
+  not driven.
+- **Tried and left out:** a lead for the smoke ball (9 of 10 hits with it, 7 of 7 without, lead 0.1 m on average),
+  and a frame-rate independent reach (the shell's speed numbers are per frame in shared data: InitialSpeed 0.54,
+  Acceleration -0.008, RangeDist 20).
+- **Regression on the final build** (solo test save, 30 FPS): 150 s of goblin waves: 22 casts, longest wait of a
+  released cast 1.6 s, pawn down 0, error lines 0; a minute out of battle: no cast; disable and enable; a soak of
+  10 minutes (numbers in NOTES.md). Not run: title and second load, death and reload, a hired pawn, a big enemy.
+
+- **Second part, the same day** (asked by the author): rogues,
+  harpies, a cyclops, a hobgoblin group, the rank 4-7 skills, a hired Fighter (who died in a fight: the party-change
+  setup ran in the middle of the battle), five rapid skill changes, four disable / enable cycles, a 120 m warp in
+  the middle of a throw five times, the title in the middle of a fight, two soaks of four fights. No error line in
+  any of it and the model on the pawn in every check. One real finding: **the pawn ran out of stamina when a cast
+  with a stamina floor followed a costly cast within a few seconds** (an effigy 4 s after a Rally; a Screen 3 s
+  after a Rally: 7.5 s out of stamina against harpies). The floor is read when the rule is released, and the cast
+  before it takes its stamina over its three to five seconds. `V.cast_busy` / `cast_spacing` (6 s): Dragon's
+  Delusion, Delusory Screen and Latching Effigy stay held for that long after a Rally, a Screen or an effigy began.
+  The soak after it: 0 out-of-stamina samples in about 10.7 minutes of battle, the share of battle time spent
+  casting about the same (65-72 %). Numbers: NOTES.md.
+
+- **Third part: title and second load, death and "Load from Autosave"** (on the author's word, one short focus
+  session each): both clean on 0.2.8, each followed by a fight with no error line. Before that, **one crash**, 19 s
+  after a second load, inside the game's hand IK (`UpperBodyTransformer.HandParentInfoHolder.initDataToApplyHandIK`,
+  DD2.exe+0x326bc2), in the second the rules were added and the pawn began its first summon. The save loaded there
+  was an autosave made by the test with the Arisen at 0 HP (the no-die flag), so the Arisen was dying in that second.
+  Not reproduced on a healthy save nor in a staged attempt; whether the mod has a part in it is open. Evidence:
+  `mods-src/crash-kit/crashes/2026-11-12_120657`.
+
+- **Fourth part: everything that was still untested** (asked by the author). Passed: a skill change during a setup (three timings); the real click
+  on "Enable debug logs" (off, then on); **the guild's own menu** (unequip and equip with real keys on the pawn's
+  tab: the mod waits while the guild is open and sets the pawn up a second after the talk ends); the Arisen as a
+  Trickster casting next to the pawn; 40 FPS (a four-fight soak, no error line, no out-of-stamina sample); a
+  Trickster pawn with the mod passive (the game runs, the pawn only walks). Found and changed at 40 FPS: **the
+  smoke ball missed flying harpies** (3 hits in 8; the reach is 11.7 m there instead of 6.6 m at 30 FPS): it is no
+  longer thrown at an enemy in the air; and **Rally chained four times in a row** when the battle state kept
+  changing (cooldowns start at 0 after every change), down to -27 % stamina: `cast_spacing` holds Rally as well.
+  **Two crashes stay open**, each seen once and not reproduced: 19 s after a second load (hand IK; the Arisen was
+  dying, most likely from a fall at the load point), and 3 s after the guild's skill screen switched to the pawn's
+  tab in a session that had already been through six console setups and ImGui clicks (the same later: fine, three
+  times). Online stays untested: it cannot be seen from one machine.
 
 ## Run 6 protocol (v3)
 
@@ -1122,3 +1230,22 @@ just stuck, at least the 3d model, but she moves invisible". Then: "ok we have t
 - `data/exact_case_paths.txt` – exact-case asset paths (needed by `sdk.create_userdata`).
 - `../tools/dumplib.lua` – live object dumper used through the dev console; `../tools/rszdump.py`,
   `apischema.py`, `extra_types.json` – offline RSZ decoder (reads most decision/actinter files; curves decoded).
+
+**The two one-off crashes of 2026-11-12, looked into (16:00-16:40, no change to the mod).** Crash 1 (after a second
+load): `app.UpperBodyTransformer.HandParentInfoHolder.initDataToApplyHandIK`, on a motion job thread: a human
+character's upper-body transformer held an UpperArm joint whose skeleton was gone, the game reported it and read
+through a null anyway. Every human has that object, NPCs included; a load, the mod's weapon swap and the decoy were
+measured and do not touch a skeleton. Crash 2 (guild, pawn tab): `app.TriggerManager.onLateUpdate`, the array it
+rebuilds every frame was allocated over its own temporary object (overlapping memory from the thread's local heap):
+damage done earlier, by what is unknown. REFramework's dump holds no heap, so neither can be taken further. For the
+next one, `DD2CrashTrace.dll` now writes a report with the exact method of each frame, the typed objects with field
+and GameObject names, and a dump with the memory around them (`reframework/data/DD2CrashTrace/crash_*.txt`). Details:
+NOTES.md, "fifth part".
+
+**A hunt for the state behind crash 1 (2026-11-12, 16:57-17:33, no change to the mod).** A read-only recorder checked
+every character near the party five times a frame for a hand-IK or Hip joint without a skeleton, through far warps,
+the pawn left behind, rogue and goblin fights, the Arisen's death: 0 sightings in about 61,000 frames while 482
+characters were destroyed (369 NPCs, the pawn 14 times). The game clears a character's transformer in the same step
+that destroys it, so the crash needs the motion job to run inside that step: a narrow race of the game's own, for
+any human being removed. Nothing the mod does widens it. Details: NOTES.md, "sixth part"; tools in
+`mods-src/crash-kit/hunt/`.

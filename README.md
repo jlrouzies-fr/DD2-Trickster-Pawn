@@ -67,6 +67,7 @@ Changes are accepted when they were tried in the game: say what you tested and w
 - [`AGENTS.md`](AGENTS.md) is the working method: how to drive the game unattended, how to find out why the pawn
   does not do something, the engine rules that crash the game when broken, and the checks to run before a change is
   called done. It is written for AI coding agents and works just as well for people.
+- [`tools/tests/`](tools/tests) holds the scripts of the 0.2.8 test day (soaks, stress runs, the guild menu, clicks).
 - [`tools/`](tools) holds the helpers that method uses: a dev console for REFramework, launch and load scripts that
   do not steal the focus, a watchdog for crash dialogs, fight helpers and the samplers that say what the pawn's AI is
   doing and which condition refuses a rule.

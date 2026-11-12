@@ -362,6 +362,11 @@ Run on the final build, each with its sampler output and the mod's log read from
 7. If a skill rule changed: that skill equipped through `"debug": true` and `"skills"`.
 8. A soak of 10 minutes or more on the final build.
 
+`tools/tests/` holds the scripts that ran these checks for 0.2.8 (four-fight soaks, skill-change stress, the guild's
+own menu, the Arisen casting next to the pawn, 40 FPS, a real click on the mod's panel), with their helper Lua files
+and a README of what each needs. They were moved there from a scratch folder and not run again since: read one
+before you run it.
+
 Then: section "what changed and what was measured" in `docs/DEVELOPMENT.md`, raw facts and traps in
 `docs/NOTES.md`, the changelog, the shipped readme (`reframework/data/PawnTrickster/README.txt`), and a version bump
 in the script's first line. In texts meant for players the pawn is "it".

@@ -910,3 +910,441 @@ Probes (scratchpad `r/`, read only unless said): `diag.lua` (the sampler describ
 - `"$C\$n.gif"` in bash does not expand `$n`: build Windows paths with `cygpath -w "$PWD/.../$n.gif"`.
 - I named a cause for the stuck model three times in an hour, each time as a fact, each time wrong or unproven.
   The user was told so. See the v48m section of README.md.
+
+## 0.2.7: the mod's own log is enough for a bug report (2026-11-12)
+
+- Every `sdk.hook` / `re.on_frame` / `re.on_draw_ui` callback of the script goes through `guard()` / `hook()`
+  (xpcall): an error is written to log.txt with its stack (first 3 per place, then every 100th with a count). A failed
+  pre-hook lets the game's method run, a failed post-hook returns the game's own result. Unit-tested with lupa and a
+  mock `sdk.hook` (SKIP_ORIGINAL passes through, changed results pass through, errors fall back, 6 lines for
+  1 + 205 errors); in game a guarded frame callback that threw 5 times left 3 entries with stacks, with "log": false.
+- log.txt is written even with "log": false: a header (build, REFramework tag/commit/build date, settings changed from
+  the defaults) and errors (lines whose first part has "error" or "failed", at most 300 per start).
+- At each start the previous log.txt becomes log.previous.txt (last 4 MB kept: older logs were never emptied; 8 MB one
+  turned into a 4,194,304-byte file in the test), log.txt starts empty.
+- REFramework panel: "Enable debug logs" = `PT.set_log(on)`: saves "log" in config.json and first writes the 400
+  steps kept in memory (tested from the console: 61 steps flushed, then every step). The panel itself was not seen on
+  screen: the REFramework menu opens without focus (PostMessage WM_KEYDOWN Insert), but ImGui takes no mouse input
+  while the game is not the foreground window, so the tree node could not be opened. The author then quit the game.
+- A 60 s goblin fight with the build: casts 9, decoy, Rally, Delusion, a dust ball thrown; 0 error lines.
+
+## 0.2.8: the stuck / invisible pawn model found and fixed; skills without a reload (2026-11-12, 08:55-)
+
+Four hours given by the author. Test save (solo, level 1 pawn), 30 FPS, DLSS Ultra Performance, the RenoDX DLSS
+add-on off, one focus session of 1.5-1.9 s per launch (six launches).
+
+- **0.2.7 on screen.** `PT.draw_panel` (the panel's body, now a function) drawn in a window from the console: the
+  checkbox "Enable debug logs (every step, for a bug report)" and its path line are there (`run028/panel1.jpg` in the
+  scratchpad). With logs off, `PT.say` of a category that does not exist left "voice: category not found" in log.txt,
+  a guarded function that threw left its error with the stack, `PT.status()` left nothing; switching on wrote 72
+  stored steps. The click itself was not made (ImGui takes no mouse without the focus).
+- **The stuck model.** What the author saw on 2026-11-11 (the pawn's model stuck in place while the pawn itself moved on unseen) and again today in my test scene (NPCs and the Arisen frozen too).
+  - The detector: inside `re.on_frame`, the pawn's `Transform.get_Position` against `get_WorldMatrix()[3]` (or against
+    `Character.get_HipJoint():get_Position()`). On a broken pawn they were 3 to 119 m apart; from the console
+    (`LateUpdateBehavior`) the same read is always right, which is why console probes never saw it.
+  - Where in the frame: one sample per engine stage (`re.on_pre_application_entry` on 21 stage names, all accepted):
+    right at pre-`LockScene`, stale at pre-`WaitRendering`, `BeginRendering`, `EndRendering`, right again from
+    `UpdateMotionFrame` on. So the copy the renderer reads had stopped being refreshed for that one transform.
+  - A camera pointed at the stale place showed the pawn's model standing there, animated; a camera behind the pawn's
+    real place showed nobody.
+  - Replayed on a clean pawn, one step at a time, the detector read after each: `Character.warp` option 0 and 1 in
+    and out of view, a 120 m warp, the capture camera (follow, side, late), a throw asked out of view, the frozen
+    dummy scene (`set_UpdateSelf(false)` on the goblin, warp, rotation written from the console), `dust_demo.lua`,
+    the clip tool, a per-frame joint recorder, a request of an action name that does not exist, `get_Joints`: all
+    clean. A loop of "place, 0.8 s, throw" went stale at its first cycle.
+  - **The cause, proven on a fresh launch:** ONE `tf:call("set_Rotation", ...)` on the pawn from `re.on_frame`, then
+    a move: 11.69 m apart. Moved back to the place of the write: 0.03 m. `V.dust_step` did exactly that write to turn
+    the pawn to its target (since v48i = 0.2.6, the build on Nexus as version 2): whenever the pawn had to turn
+    more than 2 degrees for a smoke throw, its model stayed where it threw until its next throw.
+  - **The fix:** `V.dust_step` stores the wanted yaw (`st.dust_yaw`), `V.turn_apply` writes it in
+    `re.on_pre_application_entry("LateUpdateBehavior")`. Measured on the fixed build: pawn turned 110 degrees away,
+    throw asked, ball thrown "1 degrees off her facing", pawn moved, 0.02-0.05 m apart, 4 of 4; a 120 s goblin fight
+    with 12 detector reads, 0.02-0.17 m.
+  - Not the cause, though I suspected each for a while: the short warp, the capture camera, the game's own hiding of
+    characters outside the camera (`InCameraChecker`, `CharacterMeshVisibleToggler`, motion every 4th frame:
+    `get_MotionUpdateIntervalFrameByLODProcessor`), `CharacterPosRotAdjuster`, the occlusion volume
+    (`OcclusionChecker._VolumeOccludee`: its `TransformedOBB` sat at the stale place because it follows the same
+    render copy). The three causes named on 2026-11-11 were all wrong.
+  - No cure inside a session was found (same-value writes in and out of the lock, warps, the occludee off and on):
+    only a relaunch. My first test warp also put the pawn into a pond behind the camera (black frames).
+- **Engine facts.** `re.on_frame` runs inside the render lock; the dev console runs commands at
+  `LateUpdateBehavior`. Stage names that exist: UpdateBehavior, UpdateFSM2, UpdateBehaviorTree, UpdateTimeline,
+  UpdateMotion, UpdatePhysicsCharacterController, UpdateDynamics, LateUpdateBehavior, UpdateConstraintsBegin,
+  UpdateJointExpression, UpdateConstraintsEnd, UpdateMotionFrame, UpdatePhysicsAfterUpdatePhase, UpdateKinematics,
+  UpdateGpuCloth, UpdateEffect, LockScene, WaitRendering, BeginRendering, EndRendering, UpdateGUI.
+  `app.CharacterWarpOption`: ClearPosRotHistory, ResetPosRotContext, NoChangePosRotContext. Joint names of a human:
+  Hip, Spine_0-2, Head_0, R_Arm_Hand, L_Arm_Hand (192 joints).
+- **Skills without a reload.** `V.skills_changed`: the Job09 skills equipped now against the set the rules were built
+  for (`st.built_sig`, set in `step_ai`); different for `skill_watch_wait` (4 s) out of battle with no menu open
+  (`app.GuiManager.IsOpenMainFlowUI()`: true with the pause menu open; `app.InteractManager.IsPlayerTalking`: the
+  guild screen) = the teardown of a party change. Not when every slot is empty (the setup would refill them from
+  pawns.json), not with "debug". Tested from the console (`setCustomSkillEnable` + `setSkill`, the calls the mod's own
+  debug path uses): Latching Effigy put in place of Delusory Screen: "skills: the equipped skills changed from
+  [92,95,97,99] to [95,96,97,99]", rules ready 26 s later with the effigy rule in and the screen rule out; with the
+  pause menu open 16 s nothing happened, 5 s after it closed the setup ran. Not tested in the guild's own menu.
+- **log.txt header:** keys of config.json that this build has no default for are listed apart ("settings this
+  version does not know (not used): force_rebuild, stance_max, stance_min") and no longer as changed settings.
+- **The thrown smoke's numbers** (`HumanShellParamData_Job09`, entry 8, hash 2585554136, "煙飛ばし"): InitialSpeed
+  0.54, MaxSpeed 0.15, Acceleration -0.008 (per frame at 60), RangeDist 20, LifeFrame 600, homing 0.5 degrees a
+  frame, hate type 25. Making the reach the same at every frame rate would mean a copy of that entry in a
+  ShellParamData of our own or editing the shared one during the flight: left alone (the mod already throws only
+  within the reach of the running frame rate).
+- **The ball's lead, tried and taken out.** A lead (target speed x flight time) was written and compared with only
+  the dust slot released, `dust_safe` 2.0, goblin waves, 30 FPS, 150 s each: with the lead 10 balls, 9 hits (the
+  lead was 0.1 m on average: goblins mostly stand when they are thrown at); without it 7 balls, 7 hits. No difference
+  to measure, so the code is not in the build. "Two in three hit" in the readme comes from fights with every slot and
+  `dust_safe` 3.5 (farther targets); it was not measured again.
+- **Regression on the final build** (0.2.8, solo test save, 30 FPS): goblin waves 150 s with every slot: 22 casts
+  (Rally 8, Delusion 2, Screen 1, summon and beckon, 2 smoke balls, 2 hits), a cast executing in 122 of the 146
+  samples with one released, longest wait 1.6 s, one out-of-stamina episode of 2 s (lowest -4 %), pawn down 0, error
+  lines 0, the detector 0.01-0.15 m in 7 reads. A minute out of battle: no cast (casts 24 before and after). Disable:
+  the pawn back to Mage with its old weapon; enable: a Trickster again.
+- Not run: the title and a second load, a death and "Load from Autosave" (both need a second focus session), a
+  hired pawn, a big enemy, the guild's own menu, the click on the panel's checkbox.
+- Tools of this run (scratchpad `run028/`): `late3.lua` + `ap.sh` (the detector), `stages.lua` (one sample per engine
+  stage), `wm.lua`, `rec.lua`, `hand.lua`, `occ*.lua`, `lod*.lua`, `rot_lock2.lua` (the one write that breaks a
+  pawn), `turnaway.lua`, `sk*.lua`, `menuq.lua`, `shot.ps1` / `sheet.ps1` (PrintWindow stills and a contact sheet).
+- **Soak on the final build**, 10 minutes of goblin waves (about 6 of them in battle: 715 battle samples; my
+  detector reads every 20 s lost some of the helper's spawn commands in the first four minutes, so I read once a
+  minute after that): Rally 26, Screen 2, 14 smoke balls and 14 hits, a cast executing in 249 of the 351 samples
+  with one released, longest wait 1.6 s, lowest stamina 20 %, pawn down 0, error lines 0, the detector 0.00-0.29 m
+  in 16 reads. Smoke balls of the day, with and without the other slots: 33 thrown, 32 hits (goblins, 30 FPS).
+- **Left as it was found:** the author's save put back (9 of 9 files equal to the Fighter backup), config.json,
+  pawns.json and log.txt of the mod's folder put back, `config.defaults.json` and `log.previous.txt` of the test
+  runs removed, dev console and hire guard removed, low-GPU settings off (DLSS MaxPerformance, 40 FPS, the RenoDX
+  add-on back), watchdog stopped, game closed. Installed script and readme = this build (0.2.8).
+
+### 0.2.8, second part: more scenarios on the author's word, 10:40-
+
+Same rules (30 FPS, one focus session of 1.1-1.5 s per launch, two more launches). No title-and-load or death-reload
+leg: both need a second focus session.
+
+- **Rogues** (3, 2500 HP), 170 s: Rally 9, Delusion 7, Screen, 2 smoke balls and 2 hits, a cast executing in 199 of
+  290 samples with one released, error lines 0, model check fine. The pawn went down once (revived by the helper);
+  the longest wait of a released cast was 11.4 s, which I take to be that time down (not checked against the samples).
+- **Harpies** (3), 130 s: Rally 8, Delusion 4, 2 balls and 2 hits, longest wait 2.1 s, pawn down 0, error lines 0.
+- **Cyclops** (HP 39996), 90 s, by hand (the wave helper would have cleaned a single enemy away; the first one,
+  spawned 14 m ahead, fell off the cliff and out of the world): Delusion 8, Rally 4, Screen 2, 2 smoke throws, error
+  lines 0; the level 1 pawn went down once.
+- **Stress, no enemies** (`run028/stress.sh`): five skill changes 1.5 s apart gave ONE setup, 4 s after the last
+  change, for the final set; every slot emptied gave none (the rules stayed), one skill put back gave a setup for
+  [97]; four disable / enable cycles 7 s apart ended ready; 8 setups and 4 skill-change teardowns in the log, problem
+  lines 0. A change made while a setup was running was not exercised (the test's own helper needs the mod's
+  context, which is not there during a setup).
+- **Rank 4-7 skills** equipped through the skill watch ([93,94,96,97]). First fight: the goblin waves stayed passive
+  (39 s of battle in 170 s), still 2 effigy casts and a latch. Second, against a hobgoblin, a goblin thrower and two
+  goblins, 160 s: Rally 13, Latching Effigy 7 casts and 4 latches (3 with the script's incense), Espial Incense 4,
+  7 balls and 7 hits, pawn down 0, error lines 0, longest wait 2.6 s.
+  - **Finding:** the pawn was out of stamina in 2 episodes (8 samples). The sequence in the log: Rally at :32, effigy
+    window at :36 and the cast at :36. The effigy's stamina floor is read when the rule is released; Rally takes its
+    stamina over its three to five seconds, so the floor passed and the effigy then began on what Rally left.
+    **Change:** no effigy for `effigy_after_rally` (6 s) after a Rally began (`st.rally_act_t`, set in
+    `V.on_action`). In the fight after it (hired Fighter, 180 s): 0 out-of-stamina samples, one effigy, 7 s after a
+    Rally. One fight is a thin proof.
+  - I first read the four `Job09_CastTripFregrance` casts as Fickle Floor. They are Espial Incense
+    (`SKILL_ACTION[94]`; Fickle Floor is `Job09_CastSmokeGround`). Both asked out of battle took no stamina in 6 s.
+- **A far warp in the middle of a throw** (`run028/warpstress.sh`): pawn turned away, throw asked, 120 m warp 0.3 /
+  0.6 / 0.9 s later and back, five times: the model on the pawn each time (0.00-0.05 m), problem lines 0, no soft
+  reset (the pawn is not rebuilt by that warp).
+- **To the title in the middle of a fight**, right after a throw was asked (`NOCLEAN=1 totitle.sh 30`): "the game
+  phase was left: 2 packs removed, 5 vanilla node lists restored", the test spawns destroyed at the title, alive after
+  30 s, no problem line.
+- **A hired Fighter in the party** (the author's save copy `DD2_save_backup_20261111_hired_fighter` as the start, put
+  back afterwards), Latching Effigy equipped through the skill watch, mixed enemies, 180 s: the Fighter played no
+  Job09 action (0 seen in 291 samples), main pawn: Rally 7, Delusion 5, beckon 5, effigy 1, 3 balls and 2 hits,
+  error lines 0, down 0. The Fighter was down for 33 s and the main pawn carried it (`Common/Pawn_CarryDeadPawn_02`,
+  63 samples): the game's own rule, and the reason for a 26.4 s wait of a released cast.
+- **Soak with the hired Fighter** (four fights of 190 s in a row: goblins, rogues, mixed, harpies; about 10 minutes
+  of battle): problem lines 0; Rally 35, Delusion 15, Screen 23, effigy 8, 8 smoke throws, beckon 5. In the first
+  fight the Fighter died and left the party ("the other pawns' vocations changed from [1] to []"): the main pawn was
+  set up again in the middle of the battle (the party-change path), rules back 18 s later, no trouble. Main pawn down
+  only against the rogues (19 samples). Longest waits 22.3 s (carrying the dead Fighter), 4.2, 0.5 and 6.2 s.
+  - **Finding:** against the harpies one out-of-stamina stretch of 7.5 s (15 samples, lowest -6 %). The casts before
+    it: a Delusory Screen 3 to 5 s after a Rally began, four times in that fight ("screen x9: started at 73 % on
+    average, lowest -6 %"). The same race as the effigy's: the Screen's floor is read when its rule is released, the
+    Rally before it had not taken its stamina yet.
+    **Change:** one rule instead of the effigy-only one: `V.cast_busy` = an Aromatic Rally, a Delusory Screen or a
+    Latching Effigy began less than `cast_spacing` (6 s) ago (`st.cost_act_t`); while it is true the rules of
+    Dragon's Delusion, Delusory Screen and Latching Effigy stay held.
+- **Soak on the final build** (with `cast_spacing`; solo test save; the same four fights, 1288 battle samples = about
+  10.7 minutes of battle): problem lines 0; out-of-stamina samples 0 in all four fights (lowest stamina 42, 37, 16 and
+  29 %); pawn down 0, no revive; Rally 37, Delusion 11, Screen 16, 16 smoke throws (15 balls, 13 hits), beckon 3. A
+  cast executing in 94 of 131, 78 of 120, 196 of 277 and 145 of 217 samples with one released (72, 65, 71 and 67 %;
+  the soak before the change: 57 % with the carry, 82, 89 and 71 %); longest waits 2.1, 6.6, 3.6 and 5.2 s. The model
+  check after each of the eight soak fights: 0.01-0.10 m.
+- Smoke balls counted over the day: 64 thrown, 60 hits (goblins, hobgoblins, rogues, harpies; 30 FPS). The cyclops
+  fight and the soak with the Fighter are not in the count (the counters restart at every setup).
+- **Still not run:** title and a second load, a death and "Load from Autosave" (a second focus session each), the
+  guild's own menu, the click on the panel's checkbox, a frame rate other than 30, online. A skill change made while
+  a setup is running.
+- Left as it was found, again: save 9 of 9 equal to the Fighter backup, the mod's config.json / pawns.json / log.txt
+  back, dev console and hire guard removed, low-GPU settings off, watchdog stopped, game closed. Installed = this
+  build.
+
+### 0.2.8, third part: title and second load, death and "Load from Autosave" (asked by the author), 12:00-12:25
+
+Two launches; focus sessions: 1.5 s at each launch, 1.1 s for each load from the title (`loadsave.sh`, taps only
+while the phase is 8), 3 s and 8 taps on the death screen (`run028/death_space.ps1`: `load_space.ps1` with the title
+phase 8 replaced by 40, taps until the phase leaves 40).
+
+- **A crash, once, 19 s after a second load** (12:06:57, `mods-src/crash-kit/crashes/2026-11-12_120657`): access
+  violation at DD2.exe+0x326bc2, `app.UpperBodyTransformer.HandParentInfoHolder.initDataToApplyHandIK` <-
+  `applyHandIK` <- `app.UpperBodyTransformer.onAfterExternalUpperBodyIK`; no plugin and no script on the stack. Never
+  seen before in the crash index.
+  - What led to it: a 70 s "fight" in which the goblins stayed passive, the title, the load. The save that was
+    loaded was an autosave of that stretch with **the Arisen at 0 HP** (the test's no-die flag had kept it alive;
+    "protect: Arisen hp 0/465" in the mod's log) and the party in battle from the first second. The mod's log of the
+    last second: 12:06:56 rules added (in battle), the pawn's first `Job09_SummonDecoy`, the voice line, then the
+    crash at 12:06:56.9. The Arisen was dying in that same second (the no-die flag is gone at a load).
+  - Not established: whether the mod has a part in it. Which character's hand IK faulted is not known. The same
+    title-and-load on a healthy save, right after, was clean; so was a staged attempt without a load (the pawn set
+    up again through disable / enable in battle while the Arisen stood at 1 HP among four goblins: the pawn's
+    Screens and Delusion kept it alive for 36 s, so the combination "the Arisen dies in the second the rules are
+    added" was not hit again).
+  - For the next test of a load: never go to the title with the no-die flag having been needed (heal first, check
+    the Arisen's HP is not 0), or the autosave that gets loaded has a dead Arisen in it.
+- **Title and second load, healthy save** (title straight after the first load, then `loadsave.sh`): the pawn set
+  up again 15 s after the load; then mixed enemies for 120 s: 245 battle samples, a cast executing in 131 of 178 with
+  one released, longest wait 3.6 s, out-of-stamina 0, down 0, error lines 0, the model check 0.06 m.
+- **Death and "Load from Autosave"** (third load of the session): at 1 HP (`hp1.lua` every 2 s, no-die off) the
+  Arisen survived a minute among goblins because the pawn's decoy kept them off; with every slot of the pawn held,
+  the decoy unsummoned and four goblins brought to 2 m it died after 44 s (phase 40). Test spawns destroyed, the
+  taps, phases 2, 14, 15, 21, 22, 24, 26, 27 in 18 s; "the game phase was left: 2 packs removed, 6 vanilla node
+  lists restored", setup done 9 s after the load. Then goblins for 110 s: 210 battle samples, a cast executing in
+  85 of 116, longest wait 2.6 s, out-of-stamina 0, down 0, error lines 0, the model check 0.02 m.
+- Problem lines in the mod's log over the whole launch (title, load, death, load, three fights): 0.
+- Left as it was found: save 9 of 9, the mod's folder, settings, tools. `reframework_crash.dmp` of 12:06 is still
+  in the game folder (REFramework's own file; a copy is in the crash kit folder).
+
+### 0.2.8, fourth part: everything that was still untested (asked by the author), 13:41-
+
+- **A skill change while the mod is setting the pawn up** (`run028/setupchange.sh`, the change made without the mod's
+  context): three timings: during the 4-6 s between the teardown and the new setup, while the setup is pending, and
+  after "ready" but before the rules exist. Each time the pawn ended with rules for the skills equipped at the end;
+  6 setups, 6 skill-change teardowns, problem lines 0.
+- **The click on "Enable debug logs"** (the panel drawn in a window of its own, REFramework's menu opened with a
+  posted Insert, one real left click at the box with the game in front, 1.3 s of focus each): click 1: cfg.log false,
+  `"log": false` in config.json, "log: off (only errors are written)"; click 2: true, "log: switched on; the 384
+  steps kept in memory follow", saved. (An ImGui window of another mod covered my first window position.)
+- **The guild's own menu** (the inn chain of 2026-11-09, `run028/guild/`: innkeeper talk started from Lua, talk
+  select picked by text, then REAL keys in the skill screen: C = the pawn's tab, arrows, F = confirm, Esc = back):
+  - Unequip Skills -> the top slot (Sweeping Shroud): the game's slots [92,97,99]. Guild open for 28 more seconds:
+    no setup (`InteractManager.IsPlayerTalking` true the whole time; `GuiManager.IsOpenMainFlowUI` stays false in
+    the guild). Esc, Cancel, Cancel: "skills: the equipped skills changed from [92,95,97,99] to [92,97,99]" one
+    second after the talk ended, rules ready 19 s later.
+  - The row for skill 95, F, the top slot, F: slots [92,95,97,99]; 10 s open: no setup; closed: "changed from
+    [92,97,99] to [92,95,97,99]", rules back.
+  - The list row of skill 95 reads "Drowsing Fumes" while its slot and its description say "Sweeping Shroud". Not
+    looked into (the mod writes no skill names).
+  - **A crash on the first attempt** (13:48:46, `mods-src/crash-kit/crashes/2026-11-12_134846`): access violation
+    at DD2.exe+0x2d0171, about 3 s after C switched the screen to the pawn's tab (the tab had drawn: screenshot).
+    REFramework frames on the stack (a script callback calling into the game); last loose file the guild's skill
+    icon sheet, as in the two guild crashes of 2026-11-09. Not reproduced: the same sequence on a fresh launch stood
+    30 s on the pawn's tab without a probe, then with each of my probes, then again with skills 96 and 94
+    force-learned as in the crashed run and the probe 2 s after the tab switch. What differed in the crashed run:
+    it was the same game session as six console setups, the ImGui clicks and two posted Insert keys, and its first
+    talk select still showed a rift pawn's "Hire" texts when the inn talk began.
+  - My second inn talk of the session attached to a rift pawn (Kirk) that had walked up: the keys meant for the
+    guild opened its status page. Closed with Esc and Cancel; nobody was hired. Wait for the talk select to show
+    the inn's texts before any key.
+- **The Arisen and the pawn both casting** (`run028/both.sh`): the Arisen made a Trickster (`setJobQualified(9)` +
+  `requestChangeJob(9)`), the mod set up again ("the Arisen is a Trickster, keeping the pawn's own handler"), then
+  goblin waves for 150 s with the Arisen asked for a Trickster action every 7 s through its action selector: 13 of
+  17 requests played (summon, Rally, Shroud, Screen, Delusion, beckon, a smoke throw), the Arisen's decoy out at
+  every read. The pawn meanwhile: Rally 6, Screen 4, summon 1, 3 smoke throws, a cast executing in 64 of 103
+  samples with one released, longest wait 3.1 s, out-of-stamina 0, down 0, problem lines 0, model check 0.15 m. The
+  Arisen had no censer (weapon job 4): its actions played without one.
+- **40 FPS** (the author's own cap; `run028/start40.sh`: DLSS Ultra Performance and the add-on off as in the other
+  runs, the frame-rate mod left at 40; the mod read 40.1-40.2). The four-fight soak (goblins, rogues, mixed, harpies;
+  1408 battle samples = about 11.7 minutes of battle): problem lines 0; out-of-stamina samples 0 in all four (lowest
+  stamina 36, 16, 34 and 18 %); a cast executing in 183 of 232, 197 of 259, 169 of 223 and 179 of 222 samples with
+  one released (79, 76, 76 and 81 %); longest waits 3.6, 5.6, 4.1 and 3.1 s; pawn down only against the harpies (16
+  samples); Rally 55, Delusion 15, Screen 5, 43 smoke throws; the model check 0.02-0.04 m after each fight.
+  - **Finding: the smoke ball at 40 FPS.** 43 balls, 27 hits (63 %), against 60 of 64 at 30 FPS. At 40 FPS the reach
+    the mod allows is 11.7 m instead of 6.6 m, so the pawn throws three times as often and at enemies 6 to 13 m
+    away ("thrown at an enemy 5.8 / 10.6 / 8.9 / 13.0 / 6.2 / 7.4 / 10.2 m away").
+    The ball tracker (`tools/lua/dusttrack.lua`; it lists two shells per throw: the game's own, taken out at once,
+    and the script's): goblins, 12 balls, 10 hits, the two misses stopped 1.6 m from the pawn (terrain) and 1.2 m
+    short of a standing goblin; goblins that moved 5 to 6.5 m during the flight were hit (the ball homes). Harpies:
+    8 balls, 3 hits: the harpy flies 3.4 to 5.9 m while the ball is on its way and the ball ends 2.2 to 3.1 m from it.
+    **Change:** the ball is not thrown at an enemy in the air (`V.airborne` = `app.Character.get_IsFlight`, true for
+    every flying harpy in three reads, false for the pawn and the Arisen; in the gate `V.dust_safe` and in the
+    target choice of `V.dust_step`; `"dust_flying": true` brings the old behaviour back). After it: harpies 200 s:
+    1 ball (its target took off during the wind-up); goblins 193 s: 11 balls, 11 hits.
+  - **Finding: Rally after Rally.** In the first harpy fight on that build the pawn was out of stamina in two
+    stretches (11 samples, lowest -27 %): four Rallies 4 to 6 s apart (14:39:15, :21, :25, :29), twice. Rally's
+    cooldown is 12 s, but the game rebuilds the rule lists at every change of the battle state and the cooldowns
+    start at 0 again; harpies flying in and out change that state all the time. Rally's stamina floor then had the
+    same race as the others. **Change:** `V.cast_busy` holds the Rally rule too. After it, harpies 200 s: 12
+    Rallies, none less than 6 s after another (0 of 35 over two fights), one out-of-stamina stretch of 1.5 s
+    (lowest -4 %); goblins 193 s: 18 Rallies, out-of-stamina 0, a cast executing in 143 of 217 samples with one
+    released. Against the harpies the pawn cast in a smaller share of the fight than before (75 of 116 released
+    samples, 403 battle samples; before: 200 of 247, 405): the chained Rallies were most of that time.
+- **A Trickster pawn in a game where the mod does nothing** (`"auto_enable": false`: the script is loaded, its GUI
+  hooks are there, but the pawn is never set up: the nearest thing to another player's game that this machine can
+  show). Load: no crash; pawn vocation 9, weapon job 9 (the save keeps the censer), 12-14 main decisions. Goblin
+  waves 150 s: the pawn executed `Common/MoveToPosition_Walk_Target` in 85 % of the battle samples (Strafe 57 %,
+  NormalLocomotion 37 %), never an attack or a Job09 action, was hit, went down once. So without the mod a Trickster
+  pawn is harmless and useless in a fight. What the rift does with it online is still unknown.
+- **The crash after a second load (12:06), tried again.** The Arisen's HP cannot be brought to 0 under the no-die
+  flag (`setHpValue(0)`: no effect; goblin hits at 1 HP: stays 1; a 45 m drop: no damage), and returning to the
+  title writes no save (the save that is loaded is the autosave made by the warp to the arena). The crashed
+  launch's own log shows the Arisen healthy before the title and at 0 / 465 HP 19 s after the load, with the pawn
+  playing `RunToFall` at the same time: the party most likely loaded at the cliff edge and the Arisen fell to its
+  death while the pawn was being set up. Placing a death inside the few seconds of a setup was not managed (the
+  spot 16 m ahead of the Arisen was solid ground this time). With the mod passive, the same title-and-load ran 45 s
+  without trouble (Arisen healthy). Still open.
+- **Regression soak on the final build** (30 FPS, the four fights, 1470 battle samples = about 12.3 minutes of
+  battle): problem lines 0; out-of-stamina samples 0 in all four (lowest stamina 35, 37, 39 and 25 %); pawn down 0;
+  Rally 57 (none less than 6 s after another: 0 of 58), Delusion 15, Screen 2, 14 smoke balls and 13 hits; a cast
+  executing in 91 of 155, 100 of 178, 79 of 131 and 68 of 103 samples with one released (59, 56, 60 and 66 %);
+  longest waits 3.1, 5.6, 5.2 and 4.2 s; the model check 0.02-0.07 m.
+- **What the Rally part of the spacing costs** (goblins, 30 FPS, 170 s each, `cast_spacing` switched in the running
+  game, `run028/ab_spacing.sh`): spacing 0: 14 and 14 Rallies, 26 and 31 casts, out-of-stamina 0 and 0; spacing 6
+  on all four casts: 10 and 7 Rallies, 25 and 24 casts, out-of-stamina 0 and 5 samples. So holding Rally after a
+  Screen or an effigy cost Rallies and bought nothing against goblins. **Final form:** Rally waits `cast_spacing`
+  only after another Rally (`st.rally_act_t`); Delusion, Screen and effigy wait after a Rally, a Screen or an effigy.
+  - The sampler's "a cast executing in N of M samples with one released" cannot compare builds with and without
+    the spacing: the spacing holds the rules while a cast runs, so those samples are no longer "released" (176 of
+    264 against 65 of 130 for the same number of casts). Count casts instead.
+- **The final build** (Rally waits only after a Rally), 40 FPS, harpies 180 s then goblins 180 s: problem lines 0;
+  harpies: Rally 9, out-of-stamina 0 (lowest 15 %), one smoke ball (a hit); goblins: Rally 16, 13 balls and 13
+  hits, out-of-stamina 4 samples in 2 stretches (lowest -4 %); no two Rallies less than 6 s apart (0 of 29); the
+  model check 0.04 and 0.01 m. So the out-of-stamina moments are fewer and shorter than this morning (7.5 s and
+  5.5 s stretches then), not gone. This last form did not get a four-fight soak of its own.
+- In one launch (15:38) the spawner answered "true" for every spawn and no enemy ever reached the enemy list
+  (goblins and harpies, with the Arisen turned either way); the next launch was normal. Not looked into.
+- Launches of this part: 12, one focus session of 1.1-1.5 s each, two more of 1.1 s for loads from the title, two
+  of 1.3 s for the clicks, and about ten single key presses (each one a focus grab of about a second) in the guild.
+- Left as it was found: save 9 of 9 equal to the Fighter backup; the mod's config.json (auto_enable true, log true),
+  pawns.json and log.txt back; dev console, hire guard and inn hooks gone; low-GPU settings off (DLSS
+  MaxPerformance, the frame-rate mod at 40, the add-on back); watchdog stopped; game closed. Installed = this build.
+- **Open after this day:** the crash 19 s after a second load (hand IK, once); the crash on the guild's pawn tab
+  (once, in a long session); out-of-stamina moments of a second or two still happen; the list row of Sweeping
+  Shroud reads "Drowsing Fumes".
+- **Not an open point any more (the author's decision, 2026-11-12):** what other players
+  see when they hire the pawn online: not important enough, and it would need a second player. No test time for it, no release blocker; the readme's warning stays as it is.
+
+### 0.2.8, fifth part: the two crashes looked into, and a crash reporter (asked by the author), 16:00-16:40
+
+No change to the mod in this part. Tools: `mods-src/crash-kit/dis/dumpinfo.py` and `dumpmem.py` (new: what a
+`reframework_crash.dmp` holds), `frames.py`, `disasm_dd2.py`; the native plugin `mods-src/CrashTrace` (extended, see
+below). Three launches (16:16, 16:23, 16:30), one focus session of 1.1-1.5 s each.
+
+- **What REFramework's dump holds:** the thread stacks and nothing of the heap (20,417 ranges, 1.3 MB, almost all
+  of them 6-12 bytes of system DLLs). None of the objects behind the registers of either crash is in it. So the
+  analysis below is from the code at the fault, the registers and the stack only.
+- **Crash 1 (12:06:57, 19 s after a second load), `DD2.exe+0x326bc2`:** exact methods (type database function
+  pointers against the function starts): `app.UpperBodyTransformer.HandParentInfoHolder.initDataToApplyHandIK +0x52`
+  <- `HandParentInfoHolder.applyHandIK +0x70` <- `app.UpperBodyTransformer.onAfterExternalUpperBodyIK +0xaf`, called
+  from the motion system on a job thread (`via.motion.MotionManager`, `via.JobScheduler`), not on the main thread
+  and not from a script.
+  - The function reads `holder.UpperArm` (`via.Joint`, +0x30 of the holder), then the joint's skeleton (+0x10 of a
+    joint: a `via.TransformSkeleton`). The registers at the fault (rdx 0, rcx = rsi + 8, r9 inside ntdll: values a
+    call leaves behind) fit only one path: the skeleton pointer was null, the game reported it (`DD2.exe+0x59ae470`,
+    code 0x46) and then went on with a null parent joint and read through it. **So: a human character's upper-body
+    transformer still held a joint whose skeleton was gone** (the character destroyed, or its skeleton rebuilt).
+  - Every human has this object (`app.Character.<UpperBodyTransformer>`), NPCs included: a snapshot taken in that
+    method (see the plugin below) caught it running for the NPC `ch300623` on the same call chain as the crash.
+    Which character it was at 12:06 cannot be told from the dump.
+  - Ruled out, measured with a per-frame recorder of the transformer, the holder's UpperArm joint, the Hip joint and
+    their skeleton: a load (joints set once when the flow reaches phase 27, unchanged for the next minute, pawn and
+    Arisen); the mod's disable and enable with a real weapon swap (item 1500 -> censer 2104 by `setEquip`: same
+    joints, same skeleton, 40 s watched); the decoy (`app.SmokeDecoy` on `Job09_SmokeDecoy`: no `app.Character`,
+    so no upper-body transformer).
+  - Left as the candidates: the Arisen of that save at 0 HP (its death flow), or an NPC streamed out near the load
+    spot. Nothing the mod does at a load touches a skeleton. Not reproduced; not the mod's code path.
+- **Crash 2 (13:48:46, guild, pawn tab), `DD2.exe+0x2d0171`:** on the main thread, in
+  `app.TriggerManager.onLateUpdate +0xbe`, in the helper it calls to turn a dictionary's values into an array
+  (`FreeWorkDict` -> `FreeWorkArray`, rebuilt every late update; 352 entries in a normal session).
+  - The helper made a temporary collection object (rdi `...4520`), asked its count, allocated the array (rbx
+    `...44a0`, 0x80 bytes below the object) and read the object again: its header was zero. r10 / r11 still held
+    vcruntime140's memset values. An array of 13 or more entries at that address covers the object: **the array's
+    zero fill wiped the temporary object, i.e. the allocator gave out memory that overlapped an object allocated two
+    calls earlier.** Both come from the thread's `via.clr.LocalHeap` (seen in the VM context of a snapshot).
+  - That is damage done earlier (a local heap whose frame bookkeeping was off, or a block released twice), not a
+    fault of the trigger manager. What did it cannot be read from a stack-only dump. The session had six console
+    setups, forced-learned skills, clicks and posted keys before it; three tries to repeat it failed (fourth part).
+    Open; a recurrence will be reported with the objects and the memory around them.
+- **The crash reporter (`mods-src/CrashTrace/crash_report.inc`, in `reframework/plugins/DD2CrashTrace.dll`):** for
+  every exception no handler takes (its filter sits in front of REFramework's, which still writes its own dump) it
+  writes `reframework/data/DD2CrashTrace/crash_<date>_<time>.txt` and `.dmp`:
+  - the exception, the code bytes at the fault, every register with what it points to;
+  - the call stack unwound with the unwind tables (hook trampolines are stepped over), each frame with the exact
+    game method when one starts at the frame's function (694,259 methods have code in DD2.exe), and the objects its
+    caller kept in saved registers;
+  - every typed object on the stack; then the objects word by word with field names and types from the type
+    database, the GameObject they belong to, a joint's number, and `WITHOUT A SKELETON` for a joint like crash 1's;
+  - a dump with the memory around every one of those objects (6-9 MB against 1.3 MB), or the whole process memory
+    when a file named `full_dump` is in that folder.
+  - It only reads memory (behind VirtualQuery and SEH) and the type database; nothing of the game is called.
+  - `describe.txt` in that folder is a request file read once a second: a hex address (the object, dumped the same
+    way), `code <rva>` (the method an address belongs to), `snapshot <type> <method>` (the same report for a live
+    call stack the next time that method runs, the game goes on), `crashtest` (a null write on the plugin's thread).
+  - Tested: `crashtest` twice (report, dump, then REFramework's dump; `collect_crash.py` now moves the report and
+    the dump into the crash folder: `crashes/2026-11-12_163208_TEST_crashtest`); snapshots in
+    `app.TriggerManager.onLateUpdate` and `app.UpperBodyTransformer.onAfterExternalUpperBodyIK`; object dumps of the
+    pawn's and the Arisen's transformers; a 50 s fight with the plugin loaded (0 problem lines).
+  - Not tested: a real game crash with it (none happened); the `full_dump` switch.
+  - `mods-src/CrashTrace` and `mods-src/crash-kit` were not in the game repository's whitelist; added the same
+    day on the author's word (commit `2aa840f`: sources, tools and the crash index; not the build output, not the
+    collected dumps, 170 MB).
+- Left as it was found: save 9 of 9 equal to the Fighter backup; the mod's data folder identical to before; dev
+  console, hire guard and the temporary recorder gone; low-GPU settings off; watchdog stopped; game closed. The new
+  DD2CrashTrace.dll stays installed.
+- **Open after this part:** both crashes stay one-off and unexplained at the root (crash 1: which character lost
+  its skeleton and why; crash 2: what damaged the local heap). Neither points at the mod's own code.
+
+### 0.2.8, sixth part: a hunt for the state behind crash 1 (asked by the author), 16:57-17:33
+
+No change to the mod. One launch (16:57), one focus session of 1.5 s. Tools and logs: `mods-src/crash-kit/hunt/`.
+
+- **What was looked for:** not the crash (it needs the motion job to run in one exact moment) but the state it read
+  through: a character whose upper-body transformer still points at an UpperArm or Hip joint that has no skeleton.
+  `hunt.lua` (read only) takes every character of `app.CharacterListHolder.CharacterList`, keeps its transformer,
+  holders and joints, and checks them by raw reads at five points of every frame (before `UpdateBehavior`, before
+  and after `UpdateMotion`, before `LateUpdateBehavior`, at the frame callback); a character stays watched for 20 s
+  after it left the list.
+- **What was driven** (`hunt.sh`, 26 min, then the death leg): both warped 120 m away and back 8 times; only the
+  Arisen warped away with the pawn left behind 8 times; two rogue fights of 200 s; a rogue fight with the pawn
+  hurt (it went down once and was revived; my "HP to 0" call did not down it the other five times); a goblin fight
+  with the Arisen warped out of it 6 times; a goblin fight of 200 s; then the Arisen killed (no-die off, HP 1,
+  goblins) and the death screen watched for 75 s before the game was closed (no load, so no second focus session).
+- **Result: 0 sightings.** 49,580 frames and 4.37 million checks in the 26 min, about 12,000 frames more in the
+  death leg; 491 characters joined and 482 left the list: 369 NPCs, the pawn 14 times (every far warp rebuilds it),
+  goblins and rogues. 0 errors of the recorder, 0 problem lines in the mod's log, no crash.
+  - Every one of the 482 characters that left had its transformer's references already cleared at the first check
+    of the frame in which it was gone (before `UpdateBehavior`), and its GameObject pointer was 0: the game clears
+    the transformer in the same step that destroys the character. The dead-joint state never lasted to any of the
+    five points.
+  - The death flow destroyed nobody in 75 s (the list stood still).
+  - Near the arena the NPC `ch300623` is destroyed and created again every 27 s (37 times), standing at the edge of
+    the range NPCs are kept in. The same NPC was the one in the snapshot of the fifth part. So humans are destroyed
+    all the time near the party in normal play.
+- **What this says about crash 1:** the state exists only inside the engine's own destroy step. The crash needs the
+  motion job thread to run `onAfterExternalUpperBodyIK` for a character inside that step: a narrow race in the game,
+  for any human being removed (an NPC at the range edge is enough). No situation was found that makes it likely,
+  and nothing the mod does widens it: 14 pawn rebuilds in the middle of casts and fights passed clean. Not a release
+  blocker. If it comes back, the crash report names the character and marks the joint.
+- Not covered: a load right after a death, and a return to the title (each needs another focus session).
+- Left as it was found: save 9 of 9 equal to the Fighter backup; the mod's data folder identical to before; dev
+  console and hire guard gone; low-GPU settings off; watchdog stopped; game closed.
+
+### 0.2.8 published (asked by the author), 2026-11-12 18:02-18:06
+
+- Private game repo: `main` pushed (9 commits, up to `7a4e613`), then this note and the upload script's version table.
+- Public repo `jlrouzies-fr/DD2-Trickster-Pawn`: branch `bug-report-guide` at `5b27da3` (committed 18:03): the 0.2.8
+  script and shipped readme, CHANGELOG.md 0.2.8, README.md (version, smoke ball, guild skills), AGENTS.md (section 5:
+  never write a character's transform from `re.on_frame`; section 9: the stuck model closed, the capture camera and
+  the dust ball entries brought up to date, short moments without stamina added), `tools/lua/modelcheck.lua`.
+  Pull request #1 retitled and its text rewritten for 0.2.7 + 0.2.8; it waits for the owner's review (`main` is
+  protected). `docs/` was not synced with today's notes.
+- Nexus (dragonsdogma2/mods/2545, "Trickster Pawn (Experimental)"): build 0.2.8 uploaded 18:04 as **version 3** of
+  the existing file 8357808 (versions 1 and 2 archived), changelog of 6 lines posted, the page reads version 3
+  (`--check` afterwards). `nexus_versions` in `tools/nexus_upload_dd2.py` has `"0.2.8": "3"`.
+- **Left for the author by hand:** the page description. The tool does not change it;
+  `mods-src/release/PawnTrickster_0.2.8/description.bbcode.txt` differs from version 2's in 7 lines (Enable debug
+  logs, hobgoblins, guild skills without a reload, the smoke ball's numbers, the stuck-model fix, the bug-report
+  line).
+- **Pull request #1 merged by the owner** (2026-11-12 18:33 local, squash commit `e294cfc`): the public `main` is 0.2.8,
+  identical to the branch. The local clone is back on `main`; the branch `bug-report-guide` still exists on both sides.
