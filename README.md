@@ -4,7 +4,7 @@ A REFramework script for Dragon's Dogma 2 that makes your **main pawn a Trickste
 
 In the vanilla game the Trickster is an Arisen-only vocation: pawns have no Trickster combat logic, no Trickster
 entry in their Vocation Guild list and no censer handling. This mod adds all three through the game's own systems.
-Current version: **0.2.6 (beta)**. Releases are on Nexus Mods; this repository holds the source, the development
+Current version: **0.2.8 (beta)**. Releases are on Nexus Mods; this repository holds the source, the development
 notes and the tools used to test it.
 
 ## What the pawn does
@@ -16,10 +16,10 @@ notes and the tools used to test it.
   enemies or groups, Delusory Screen when you take a burst of damage, and the rank 4-7 skills (Latching Effigy,
   Fickle Floor, Espial Incense, Scented Alarum) when they are equipped and fit.
 - It holds about 7-12 m from its target instead of walking into melee.
-- Between skills it throws a ball of incense smoke at an enemy in range (0.2.6): a little damage, and the enemy does
-  not turn on the pawn for it.
+- Between skills it throws a ball of incense smoke at an enemy on the ground in range: a little damage, and the
+  enemy does not turn on the pawn for it.
 - Trickster shows up in the pawn's Vocation Guild list, Status page and skill pages; discipline, rank and skills go
-  through the game's own menus.
+  through the game's own menus, and a skill change at the guild is used without a reload (0.2.8).
 - Hired pawns keep their own behaviour (tested with a Mage, Thief, Archer and Fighter).
 
 The full player-facing text, with settings and known limits, is
@@ -40,9 +40,24 @@ To uninstall: REFramework menu > Script Generated UI > Pawn Trickster > disable,
 
 ## Reporting a bug
 
-Set `"log": true` in `config.json`, reproduce the problem, and attach `reframework/data/PawnTrickster/log.txt`
-to an issue together with: what you saw, where (enemy types, party, in or out of battle), and your other mods that
-touch pawns or AI. A short video or the time of day in the log helps to find the moment.
+Everything is in `reframework/data/PawnTrickster/`. `log.txt` is the log of the current game start: it always holds
+the mod's build, the REFramework version, the settings changed from their defaults and every error of the mod (errors
+in its hooks and frame callbacks are caught and written there with their stack). `log.previous.txt` is the start
+before, so after a crash and a relaunch the crash's log is still there.
+
+1. REFramework menu > Script Generated UI > Pawn Trickster > tick **Enable debug logs** (or `"log": true` in
+   `config.json`). It can be ticked right after the bug: the last 400 steps kept in memory are written at once.
+2. Note the time on your clock when the problem happens (every log line starts with it).
+3. Open an [issue](../../issues/new?template=bug_report.yml) (or post in the Nexus Bugs tab) and attach:
+   - `log.txt`; after a crash, `log.previous.txt` if you started the game again, and `reframework_crash.dmp` from
+     the game folder if there is one
+   - `pawns.json` for a censer, skill or augment problem
+   - what the pawn did and what you expected, the time, the enemies, the party and your other mods that touch pawns,
+     skills or AI. A short video of the moment helps a lot.
+4. Untick it afterwards: the log grows quickly in fights.
+
+If `log.txt` does not start with today's date, the mod did not load: send `re2_framework_log.txt` from the game
+folder instead.
 
 ## Contributing
 

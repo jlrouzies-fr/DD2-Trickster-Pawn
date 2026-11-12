@@ -1,0 +1,48 @@
+name: Bug report
+description: Something the pawn or the mod does wrong, or a crash
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        The files are in `reframework/data/PawnTrickster/`. Before you send them, tick **Enable debug logs** in
+        REFramework menu > Script Generated UI > Pawn Trickster (it can be done right after the bug: the last 400 steps
+        are written at once). After a crash and a relaunch, the crash's log is `log.previous.txt`.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what you expected
+      description: What the pawn did, the enemies, in or out of battle, and the time on your clock when it happened (every log line starts with it).
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Mod version
+      description: The first line of reframework/data/PawnTrickster/README.txt
+    validations:
+      required: true
+  - type: input
+    id: party
+    attributes:
+      label: Party
+      description: Hired pawns and their vocations, your own vocation
+  - type: textarea
+    id: mods
+    attributes:
+      label: Other mods
+      description: Mods that change pawns, skills, AI or combat (Skill Maker, pawn AI mods, ...)
+  - type: checkboxes
+    id: files
+    attributes:
+      label: Attached files
+      description: Drag them into the box below.
+      options:
+        - label: log.txt (with Enable debug logs ticked)
+        - label: after a crash, log.previous.txt (if the game was started again) and reframework_crash.dmp from the game folder (zipped), if there is one
+        - label: pawns.json (for a censer, skill or augment problem)
+  - type: textarea
+    id: attachments
+    attributes:
+      label: Files and video
+      description: The files above, and a short video of the moment if you have one.

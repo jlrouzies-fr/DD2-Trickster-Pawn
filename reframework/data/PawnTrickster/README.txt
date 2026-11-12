@@ -1,4 +1,5 @@
-Trickster Main Pawn 0.2.6 (beta) - REFramework script
+Trickster Main Pawn 0.2.8 (beta) - REFramework script
+The numbers 0.x.y in this file are the author's build numbers; Nexus counts its own versions (1, 2, 3).
 
 What it does
 - At every save load your main pawn becomes a Trickster and holds a censer.
@@ -15,11 +16,13 @@ What it does
   When Rally is ready and nobody is that close, the pawn dashes back to you (to about 5-8 m) and
   casts it there.
 - Between casts it keeps its distance and circles, and (0.2.6) it throws smoke: turned to an
-  enemy 4-14 m away it swings the censer (the Trickster's own throwing move), and at the end of
-  the swing a puff of incense smoke flies to that enemy. A hit does a little damage (20 + 5 for each level of the pawn) and does not draw
-  the enemy's attention to the pawn. While the decoy is out, the enemy is fooled for 6 s: it
-  lets go of your pawns and goes for the decoy. It is a filler for the time no skill is due: in a
-  test fight the pawn threw one about every 15 s, and two in three hit.
+  enemy 4-14 m away it throws a puff of incense smoke at it, by hand (the Trickster's own
+  throwing move). A hit does a little damage (20 + 5 for each level of the pawn) and does not
+  draw the enemy's attention to the pawn. While the decoy is out, the enemy is fooled for 6 s: it
+  lets go of your pawns and goes for the decoy. It is a filler for the time no skill is due: in
+  test fights the pawn threw one every 15 to 25 s of battle at 30 FPS and about three times as
+  often at 40 FPS (the ball reaches farther there); 8 or 9 balls in 10 hit an enemy on the ground.
+  It is not thrown at an enemy in the air (0.2.8).
 - Rank 4 to 7 skills, each only when equipped:
   Latching Effigy: decoy out, two or more enemies around the pawn, and the pawn facing one that
   is 3-10 m away. 0.2.6: the mod throws the incense itself, at the target's legs. The game's own
@@ -63,26 +66,29 @@ Settings (reframework/data/PawnTrickster/config.json, written on the first start
   pawn comes (m), "regroup_cooldown" the pause between two dashes (s).
 - "rally_distance" (m), "rally_cooldown" (s) and "rally_min_stamina" (0 to 1) set when Aromatic
   Rally may start. "delusion_min_stamina", "screen_min_stamina", "effigy_min_stamina": the same
-  floor for those skills.
+  floor for those skills. "cast_spacing" (s, 0.2.8): those three are not started this soon after
+  an Aromatic Rally, a Delusory Screen or a Latching Effigy began (that cast is still taking its
+  stamina), and Aromatic Rally not this soon after another Rally.
 - "effigy_near", "effigy_far" (m), "effigy_aim_deg": where an enemy has to be for Latching Effigy.
   "effigy_rethrow": false gives the throw back to the game; "effigy_small_rise": 1.7 then makes
   the pawn cast it at small enemies only when they stand higher (what 0.2.5 did).
-- "dust": false switches the smoke ball off. "dust_action": the move it is thrown with
-  ("Job09_ThrowSmoke", the full swing; "Job09_ShortSmokeAttack" is a flick of the wrist). "dust_damage": its damage (0 = "dust_damage_base"
+- "dust": false switches the smoke ball off. "dust_damage": its damage (0 = "dust_damage_base"
   + "dust_damage_level" for each level of the pawn). "dust_cooldown" (s): the pause between two.
-  "dust_near", "dust_far" (m): how far the enemy may be. "dust_safe" (m): no swing while an enemy
+  "dust_near", "dust_far" (m): how far the enemy may be. "dust_flying": true throws at enemies in
+  the air as well (most of those balls miss). "dust_safe" (m): no swing while an enemy
   is closer to the pawn than this. "dust_no_aggro": false lets a hit draw the enemy's attention,
   like the game's own thrown smoke does. "dust_fool": false stops the hit from turning the enemy
   to the decoy; "dust_fool_seconds" is how long that lasts; "dust_fool_big": true includes big
-  enemies. The smoke of this attack is kept small: the big cloud the censer swing throws by
-  itself is taken out ("dust_swing_shell": true gives it back), and the puff at the impact and
-  the swing's smoke fade out after "dust_hit_life" / "dust_swing_life" seconds (0.5 / 0.3; 0 = the
-  game's full cloud). "dust_fx_alpha": how opaque what is left is (1 = as the game draws it).
-  The thin wisp that follows the censer at all times is the weapon's own and is not changed.
+  enemies. The burst where the ball lands is small and fades out after "dust_hit_life" seconds
+  (0.5; 0 = the game's full burst). "dust_action" is the move the ball is thrown with; leave it
+  as it is (the other moves are unfinished work).
 - "resummon_seconds": the pause before a destroyed decoy is summoned again in battle (s).
   "resummon_calm": true brings it back out of battle as well (0.2.3 and earlier did).
 - "debug": true forces a fixed test skill set at every load (for testing only).
-- "log": true writes a step-by-step log to log.txt in this folder (for bug reports).
+- "log": true writes every step to log.txt in this folder (for bug reports); "Enable debug logs"
+  in the mod's REFramework panel does the same. Errors are written always.
+- "skill_watch": false stops the new setup after a skill change (the change then counts from the
+  next load); "skill_watch_wait" is the pause after the menu is closed (s).
 - "party_watch", "equip_by_game", "rule_drop", "cast_in_ready": switches back to older behaviour.
   You should not need them.
 - pawns.json in this folder is the mod's memory of your pawn's censer, skills and augments.
@@ -100,27 +106,37 @@ Known limits (beta)
 - In battle the decoy is summoned again about 6 s after enemies destroy it ("resummon_seconds").
 - Close to you the pawn is also close to what you are fighting; a low-level pawn can go down there.
   "regroup_stop" moves the point it dashes to, "regroup": false keeps it at range.
-- Skills you equip or remove on the pawn count for its combat rules from the next load, or after
-  disable / enable in the mod's panel.
+- Skills you equip or remove on the pawn at the Vocation Guild count without a reload (0.2.8): a
+  few seconds after you close the menu the mod sets the pawn up again; for about 20 s it fights like
+  a plain pawn, as after hiring a pawn. Not during a battle: then it waits for the battle's end.
 - Latching Effigy: with the incense thrown by the mod it latched on goblins level with or below
   the pawn in about half of the casts in testing (2 in 21 with the game's own throw), on rogues
   in 2 casts of 3, and never when cast turned away. A latch on a goblin lasts a few seconds.
 - Thrown smoke (the ball and the effigy incense) does not fly as far at a low frame rate: about
   7 m at 30 FPS, 13 m at 40. The mod only throws at enemies within that reach.
-- The smoke ball misses a moving enemy about one time in three.
+- The smoke ball bends only a little towards its target: an enemy running across its path can be
+  missed.
 - Fickle Floor needs a real drop between the pawn and the enemy (seen on a cliff edge);
   "floor_need_ledge": false allows it anywhere.
 - Returning to the title screen and loading again, and dying and choosing Load from Autosave,
   were tested: the pawn is set up again by itself. If your game crashes at the title with the
   mod and not without it, report it with "log": true.
-- Tested against goblins, rogues, phantoms, a cyclops and harpies, next to a Trickster Arisen
-  (the pawn then uses a decoy of its own), with a hired Mage, Thief, Archer or Fighter in the
+- Tested against goblins, hobgoblins, rogues, phantoms, a cyclops and harpies, next to a Trickster
+  Arisen (the pawn then uses a decoy of its own), with a hired Mage, Thief, Archer or Fighter in the
   party, with a censer given and equipped in the game's Equipment menu, and through a death and
   reload.
   Not tested: you and the pawn both casting Trickster skills at the same time; what other players
   see when they hire your pawn online.
 
 Fixed
+- 0.2.8: after a smoke throw the pawn's model could stay standing where it had thrown, while the
+  pawn itself went on unseen, until its next throw (0.2.6 and 0.2.7). Skills changed at the
+  Vocation Guild are used without a reload. Dragon's Delusion, Delusory Screen and Latching
+  Effigy no longer start right behind another costly cast, nor Aromatic Rally right behind
+  another Rally (the pawn ran out of stamina). The smoke ball is no longer thrown at enemies in
+  the air (it missed most of them).
+- 0.2.7: errors of the mod went only to REFramework's log; log.txt now keeps them always, starts
+  fresh at each game start (the one before: log.previous.txt) and can be switched on in the panel.
 - 0.2.6: Latching Effigy flew over small enemies standing level with the pawn or lower.
 - 0.2.5: Latching Effigy was cast in any direction and at small enemies it flies over; Dragon's
   Delusion could drain all stamina.
@@ -132,6 +148,26 @@ Fixed
 Other mods
 - Skill Maker and other mods that change the Arisen's skills are left alone: this script only
   touches the main pawn.
+
+Bug reports
+Everything is in this folder (reframework/data/PawnTrickster):
+- log.txt: the log of the current game start. It always holds the mod's build, your REFramework
+  version, the settings you changed and every error of the mod. With "Enable debug logs" ticked it
+  also holds every step the pawn takes.
+- log.previous.txt: the log of the start before (after a crash, that is the one of the crash).
+1. Turn the debug logs on: REFramework menu > Script Generated UI > Pawn Trickster > tick
+   "Enable debug logs" (or "log": true in config.json). You can do it right after the bug: the last
+   400 steps the mod keeps in memory are written at once.
+2. Note the time on your clock when the problem happens (every log line starts with it).
+3. Send, on Nexus (Bugs tab) or GitHub (Issues):
+   - log.txt; after a crash, log.previous.txt if you started the game again, and
+     reframework_crash.dmp from the game folder if there is one
+   - for a censer, skill or augment problem, pawns.json too
+   - what the pawn did and what you expected, the time, the enemies, who was in the party, and
+     your other mods that change pawns, skills or AI. A short video of the moment helps a lot.
+4. Untick it afterwards: the log grows quickly in fights.
+If log.txt does not start with today's date, the mod did not load at all: send re2_framework_log.txt
+from the game folder instead.
 
 Source and bug reports: https://github.com/jlrouzies-fr/DD2-Trickster-Pawn
 

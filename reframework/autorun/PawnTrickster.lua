@@ -1,8 +1,8 @@
--- PawnTrickster.lua - Trickster main pawn (beta 0.2.6): the main pawn takes the Trickster vocation (Job09) and fights with it.
+-- PawnTrickster.lua - Trickster main pawn (beta 0.2.8): the main pawn takes the Trickster vocation (Job09) and fights with it.
 --
 -- With "auto_enable": true (the default) the pawn becomes a Trickster at every save load; set it to false in
 -- reframework/data/PawnTrickster/config.json to run PawnTrickster.enable() / disable() by hand (REFramework menu >
--- Script Generated UI > Pawn Trickster). Every step is guarded; "log": true writes reframework/data/PawnTrickster/log.txt.
+-- Script Generated UI > Pawn Trickster). Every step is guarded; errors always go to reframework/data/PawnTrickster/log.txt; "log": true (or the panel's log switch) writes every step.
 -- Back up the save folder before the first use: a pawn stored on Job09 is not something the online rift expects.
 --
 -- What enable() does (see trickster/README.md for the evidence behind each step):
@@ -142,6 +142,7 @@ local cfg = {
     effigy_near = 3.0, effigy_far = 10.5, effigy_height = 4.0, effigy_aim_deg = 12.0, effigy_band = true, effigy_hold = 12.0, -- v48g: cast while she faces an enemy (within effigy_aim_deg) that is effigy_near..effigy_far m away, and the rule only takes targets in that band (effigy_band); once latched she stops backing off for effigy_hold s
     screen_min_stamina = 0.45, -- v48g: Delusory Screen (26-39 % of her stamina a cast) is not started under this share
     effigy_face_target = true, effigy_small_rise = 0, -- v48h: the rule's own target has to be within effigy_aim_deg of her facing. effigy_small_rise above 0: a Small enemy only when it is this much higher than her as the game measures it, to the target's body point (0.2.5 shipped 1.7: the game's incense flew over level goblins; since v48i the script throws the incense at their legs, so the rule is off)
+    cast_spacing = 6.0, -- 0.2.8: no Dragon's Delusion, Delusory Screen or Latching Effigy for this many seconds after an Aromatic Rally, a Delusory Screen or a Latching Effigy began (that cast is still taking its stamina), and no Aromatic Rally this soon after another Rally; 0 = off
     effigy_min_stamina = 0.75, -- v48g: Latching Effigy (46 % of her stamina a cast) is not started with less than this share (0.6 still left her out of breath)
     dust = true,            -- v48i: the idle attack: a censer swing from a distance that throws a ball of incense smoke at the enemy she faces
     dust_near = 4.0, dust_far = 14.0, dust_cooldown = 4.0, -- where the rule's target has to be (m), seconds between two
@@ -155,6 +156,7 @@ local cfg = {
     dust_no_aggro = true,   -- the game's "thrown smoke" hate for the thrower is not added (false: the enemy turns on the pawn)
     dust_aim_height = 0.7,  -- the ball is aimed this far above the target's feet (m)
     dust_safe = 3.5,        -- no swing while an enemy is closer to her than this (m)
+    dust_flying = false,    -- 0.2.8: true = the ball is also thrown at enemies in the air (harpies): most of those miss
     dust_height = 3.0,      -- v48j: the ball's target is at most this much higher or lower than her (m): a goblin down a cliff is no target
     dust_hit_scale = 0.4, dust_trail_scale = 1.0, -- size of the ball's impact burst and of its trail (1 = the game's own size). v48k: 0.12 / 0.25 with 60 % opacity left nothing to see of the throw (clip on a frozen goblin); the big smoke had been the swing's own shell, not these
     dust_swing_scale = 0.15, -- v48k: size of the censer's own smoke during the dust swing
@@ -196,6 +198,7 @@ local cfg = {
                              -- formation strafe, wrestle... had no Job09 entry at all) and a Job09-only row holding the Mage's
                              -- movement packs (goal_move_packs) is added next to each Mage row that carries one
     goal_move_packs = { "AppSystem/AI/Decision/Pack/Job03_KeepDistance_01.user", "AppSystem/AI/Decision/Pack/Job03_MoveAttackRange.user" },
+    skill_watch = true, skill_watch_wait = 4.0, -- 0.2.8: set the pawn up again when its equipped skills changed (out of battle, no menu open, after this many seconds)
     mage_keepdistance = true, -- also add the Mage's vanilla Job03_KeepDistance_01 decision pack (Approach / StrafeKeepDistance with Mage conditions) -- caster stance: vanilla KeepDistance node whose band starts >= stance_min_band
     require_battle = false, -- and only while the pawn's battle state is Battle -- "mux": vanilla generic packs + hook multiplexer (run 6); "actno": created ActNo packs (inert in run 5)
     job09_selector = false,  -- v47t: true adds an app.Job09ActionSelector to her selector list as 0.1.0-0.2.0 did. She
@@ -240,8 +243,47 @@ do
     end
     pcall(json.dump_file, CFG_PATH, cfg)
     pcall(json.dump_file, DEF_PATH, defaults)
+    PT.cfg_changed, PT.cfg_unknown = {}, {} -- (for the header of log.txt)
+    for k, v in pairs(cfg) do -- (a key with no default here was written by another version, or is a typing mistake)
+        if defaults[k] == nil then PT.cfg_unknown[#PT.cfg_unknown + 1] = k
+        elseif not same(defaults[k], v) then PT.cfg_changed[#PT.cfg_changed + 1] = k end
+    end
+    table.sort(PT.cfg_changed); table.sort(PT.cfg_unknown)
 end
 
+-- 0.2.7: log.txt holds everything a bug report needs, whatever "log" says. At each start the last log becomes
+-- log.previous.txt (so a crash survives one relaunch) and log.txt begins with a header (build, REFramework, the
+-- settings changed from their defaults). With "log": false it then only gets errors: lines that say "error",
+-- "failed", "not found", "missing" or "could not", which includes every error thrown inside the script's hooks and
+-- frame callbacks (see guard below), at most ERR_CAP of them per start. With "log": true it gets every step, as before.
+PT.VERSION = "0.2.8"
+local PREV_PATH = DATA_DIR .. "/log.previous.txt"
+local ERR_CAP, err_written = 300, 0
+local function write_line(line)
+    local f = io.open(LOG_PATH, "a")
+    if f then f:write(line, "\n"); f:close() end
+end
+do
+    local old = io.open(LOG_PATH, "rb")
+    if old then
+        local size = old:seek("end") or 0
+        old:seek("set", math.max(0, size - 4 * 1024 * 1024)) -- (logs of 0.2.6 and older were never emptied: keep the last 4 MB)
+        local body = old:read("a") or ""
+        old:close()
+        local p = io.open(PREV_PATH, "wb")
+        if p then p:write(body); p:close() end
+    end
+    local f = io.open(LOG_PATH, "w")
+    if f then f:close() end
+end
+-- what counts as an error line with "log": false. Checked against an 8 MB log of 118,955 lines: 105 matches, all of
+-- them real errors (action names such as HighFive_Failed have a capital F and do not match).
+local function is_problem(line)
+    for _, w in ipairs({ "error", "failed", "not found", "missing", "could not" }) do
+        if line:find(w, 1, true) then return true end
+    end
+    return false
+end
 local function log(...)
     local parts = {}
     for i = 1, select("#", ...) do parts[#parts + 1] = tostring((select(i, ...))) end
@@ -249,10 +291,90 @@ local function log(...)
     PT.log_lines[#PT.log_lines + 1] = line
     if #PT.log_lines > 400 then table.remove(PT.log_lines, 1) end
     if cfg.log then
-        local f = io.open(LOG_PATH, "a")
-        if f then f:write(line, "\n"); f:close() end
+        write_line(line)
+    elseif err_written < ERR_CAP and is_problem(line) then
+        err_written = err_written + 1
+        write_line(err_written < ERR_CAP and line or (line .. "  (no more errors are written until the next start)"))
     end
 end
+-- "log" switched on from the REFramework panel: the steps kept in memory (the last 400) go to the file first, so a
+-- player who turns it on right after a bug still sends what led to it
+function PT.set_log(on)
+    on = on == true
+    if on == (cfg.log == true) then return end
+    if on then
+        write_line(os.date("%H:%M:%S ") .. "log: switched on; the " .. #PT.log_lines .. " steps kept in memory follow")
+        for _, l in ipairs(PT.log_lines) do write_line("  " .. l) end
+    end
+    cfg.log = on
+    pcall(json.dump_file, CFG_PATH, cfg)
+    log("log: " .. (on and "on (every step is written)" or "off (only errors are written)"))
+end
+do
+    local function rf(name)
+        local ok, v = pcall(function() return reframework[name](reframework) end)
+        return ok and v ~= nil and tostring(v) or "?"
+    end
+    write_line(string.format("PawnTrickster %s started %s", PT.VERSION, os.date("%Y-%m-%d %H:%M:%S")))
+    write_line(string.format("REFramework %s %s (commit %s, %s commits, built %s), %s", rf("get_tag"), rf("get_branch"),
+        rf("get_commit_hash"):sub(1, 10), rf("get_commit_count"), rf("get_build_date"), _VERSION or "Lua"))
+    local diff = {}
+    for _, k in ipairs(PT.cfg_changed or {}) do
+        local v = cfg[k]
+        diff[#diff + 1] = k .. "=" .. (type(v) == "table" and "{...}" or tostring(v))
+    end
+    write_line("settings changed from the defaults: " .. (#diff > 0 and table.concat(diff, ", ") or "none"))
+    if PT.cfg_moved and #PT.cfg_moved > 0 then write_line("settings that follow a new default: " .. table.concat(PT.cfg_moved, ", ")) end
+    if PT.cfg_unknown and #PT.cfg_unknown > 0 then write_line("settings this version does not know (not used): " .. table.concat(PT.cfg_unknown, ", ")) end
+    write_line("log: " .. (cfg.log and "every step" or "errors only (tick \"Enable debug logs\" in the REFramework panel for a bug report)"))
+end
+
+-- every hook and frame callback of the script runs through guard(): an error is written to log.txt with its stack
+-- (the first 3 of each place, then every 100th with a count) instead of only to REFramework's log. A failed pre-hook
+-- lets the game's method run; a failed post-hook returns the game's own result.
+local guard_n = {}
+local function guard_report(where, msg)
+    local n = (guard_n[where] or 0) + 1
+    guard_n[where] = n
+    if n <= 3 then
+        log("error in " .. where .. (n == 3 and " (3rd time; from now on every 100th):" or ":"), msg)
+    elseif n % 100 == 0 then
+        log("error in " .. where .. " (" .. n .. " times):", msg)
+    end
+end
+local function guard_parts(kind, fn)
+    local ok, info = pcall(function() return debug.getinfo(fn, "S") end)
+    local where = kind .. " at line " .. tostring(ok and info and info.linedefined or "?")
+    local function handler(e) -- runs before the stack unwinds: the stack is only written for the first 3 errors
+        if (guard_n[where] or 0) < 3 and debug and debug.traceback then return debug.traceback(tostring(e), 2) end
+        return tostring(e)
+    end
+    return where, handler
+end
+local function guard(kind, fn)
+    local where, handler = guard_parts(kind, fn)
+    local function done(ok, ...)
+        if ok then return ... end
+        guard_report(where, (...))
+        return nil
+    end
+    return function(...) return done(xpcall(fn, handler, ...)) end
+end
+local function hook(m, pre, post)
+    local gpre = pre and guard("pre-hook", pre)
+    local gpost
+    if post then
+        local where, handler = guard_parts("post-hook", post)
+        gpost = function(retval)
+            local ok, r = xpcall(post, handler, retval)
+            if ok then return r end
+            guard_report(where, r)
+            return retval
+        end
+    end
+    return sdk.hook(m, gpre, gpost)
+end
+PT.guard = guard -- (for the test tools)
 
 -- enum values read live on 2026-11-08 (see trickster/live/enums.txt)
 local JOB09 = 9
@@ -767,7 +889,7 @@ local function hook_job_string(typename, method_name, name_for_job9, is_static)
     local td = sdk.find_type_definition(typename)
     local m = td and td:get_method(method_name)
     if not m then log("hook: method not found", typename, method_name); return end
-    sdk.hook(m, function(args)
+    hook(m, function(args)
         -- static: args[2] is the first parameter; instance: args[3]
         local a = is_static and args[2] or args[3]
         job_arg[method_name] = a and (sdk.to_int64(a) & 0xff) or -1
@@ -785,7 +907,7 @@ local function hook_job_hash(typename, method_name, name_for_job9, is_static)
     local td = sdk.find_type_definition(typename)
     local m = td and td:get_method(method_name)
     if not m then log("hook: method not found", typename, method_name); return end
-    sdk.hook(m, function(args)
+    hook(m, function(args)
         local a = is_static and args[2] or args[3]
         job_arg[method_name] = a and (sdk.to_int64(a) & 0xff) or -1
     end, function(retval)
@@ -1296,6 +1418,7 @@ local function step_ai(c)
     if not c.dm then log("ai: no AIDecisionMaker"); return false end
     if PT.state.trickster_pack then log("ai: pack already added"); return true end
     pcall(refresh_equipped, c) -- v47k: the slot list below leaves out skills she has not equipped
+    PT.state.built_sig = V.skill_sig() -- 0.2.8: the set the rules are built for (V.skills_changed)
     -- run 5: decisions carrying an ActInterPackData built with create_instance (a via.UserData) were selected (cooldowns
     -- ran) but never produced an action, while the decision reusing a vanilla pack did. So every decision now reuses a
     -- vanilla generic pack (shared, untouched) and the hooks on PawnUtil.getJobHeavyAttackAction(Hash) answer with the
@@ -1709,9 +1832,13 @@ local function update_summon_gate(c)
             if mx > 0 then sfrac = sm:get_field("<RemainingAmount>k__BackingField") / mx end
         end)
         local tired = (cfg.rally_min_stamina or 0) > 0 and sfrac < cfg.rally_min_stamina
+        local cbusy = V.cast_busy(os.clock())
+        -- 0.2.8: Rally waits only for another Rally (four Rallies 4 to 6 s apart drove her to -27 %). Holding it after
+        -- a Screen or an effigy as well cost Rallies for nothing: 10 and 7 in two goblin fights against 14 and 14.
+        local rbusy = (cfg.cast_spacing or 6.0) > 0 and PT.state.rally_act_t ~= nil and os.clock() - PT.state.rally_act_t < (cfg.cast_spacing or 6.0)
         local dtired = (cfg.delusion_min_stamina or 0) > 0 and sfrac < cfg.delusion_min_stamina
         if tired ~= PT.state.rally_tired then PT.state.rally_tired = tired; if tired then PT.state.rally_tired_n = (PT.state.rally_tired_n or 0) + 1 end end
-        gate_slot("rally", calm or eff_busy or pressed or protecting or not ally_near or tired or not has_skill(97))
+        gate_slot("rally", calm or eff_busy or pressed or protecting or not ally_near or tired or rbusy or not has_skill(97))
         if PT.state.decs.regroup then
             -- v48f: Rally is ready, she has the stamina, nobody is in reach: go to the Arisen. The gate closes once an
             -- ally is in reach; the running dash is ended by V.regroup_tick at regroup_stop metres.
@@ -1721,8 +1848,8 @@ local function update_summon_gate(c)
             local okr, er = pcall(V.regroup_tick, c, now, pdist)
             if not okr and not PT.state.regroup_err then PT.state.regroup_err = true; log("regroup error:", er) end
         end
-        gate_slot("delusion", calm or eff_busy or pressed or dtired or not (big or crowd) or not has_skill(99))
-        gate_slot("screen", calm or eff_busy or pressed or ((cfg.screen_min_stamina or 0) > 0 and sfrac < cfg.screen_min_stamina) or not (PT.state.low_hp or player_low or protecting) or not has_skill(92))
+        gate_slot("delusion", calm or eff_busy or pressed or dtired or cbusy or not (big or crowd) or not has_skill(99))
+        gate_slot("screen", calm or eff_busy or pressed or cbusy or ((cfg.screen_min_stamina or 0) > 0 and sfrac < cfg.screen_min_stamina) or not (PT.state.low_hp or player_low or protecting) or not has_skill(92))
         -- v48i: the dust ball is for the time nothing else is due. The game's order does that (its rank and score are the
         -- lowest of her rules); with "no enemy within the stance distance" in this gate it opened for a second at a time
         -- (v48i: not with an enemy within dust_safe metres of her: the swing roots her for two seconds)
@@ -1840,6 +1967,50 @@ function PT.party_changed()
     if sig == st.party_sig then st.party_cand = nil; return false end
     if st.party_cand ~= sig then st.party_cand = sig; return false end
     log("party: the other pawns' vocations changed from [" .. st.party_sig .. "] to [" .. sig .. "]")
+    return true
+end
+-- 0.2.8: the rules are built for the skills equipped at that moment (a slot for a skill the pawn does not have is
+-- left out, see step_ai). When the equipped Job09 skills differ from that set for skill_watch_wait seconds, out of
+-- battle, the pawn is set up again the way a party change does it, so a skill equipped at the Vocation Guild is used
+-- without a reload. Not when every slot was emptied (the gates hold the rules; a setup would refill the slots from
+-- pawns.json), and not with "debug" (it forces a set at every setup).
+-- 0.2.8: a cast that costs stamina (Aromatic Rally, Delusory Screen, Latching Effigy) began less than cast_spacing
+-- seconds ago. Those casts take their stamina over their three to five seconds, so the stamina floors of the next
+-- cast, read when its rule is released, still passed and the pawn then ran out of stamina (seen 2026-11-12: Rally at
+-- :32 and an effigy at :36; a Screen 3 s after a Rally: 7 s out of stamina against harpies; and Rally after Rally
+-- 4 s apart, four in a row, down to -27 %: the game rebuilds the rule lists at every change of the battle state and
+-- the rules' cooldowns start at 0 again, which harpies flying in and out cause all the time).
+function V.cast_busy(now)
+    local t = PT.state.cost_act_t; local sp = cfg.cast_spacing or 6.0
+    return (sp > 0 and t ~= nil and now - t < sp) or false
+end
+function V.skill_sig()
+    local e = PT.state.equipped; if not e then return nil end
+    local t = {}
+    for id in pairs(e) do t[#t + 1] = id end
+    table.sort(t)
+    return table.concat(t, ",")
+end
+-- a game menu (pause menu) is open, or the Arisen is in a talk (the Vocation Guild screen is one)
+function V.menu_open()
+    local busy = false
+    pcall(function()
+        local im = sdk.get_managed_singleton("app.InteractManager")
+        if im and im:get_field("IsPlayerTalking") == true then busy = true end
+        local gm = sdk.get_managed_singleton("app.GuiManager")
+        if gm and gm:call("IsOpenMainFlowUI") == true then busy = true end
+    end)
+    return busy
+end
+function V.skills_changed()
+    local st = PT.state
+    if cfg.skill_watch == false or cfg.debug or not st.built_sig or not st.ready_t or st.pending then return false end
+    local sig = V.skill_sig()
+    if st.battle == 2 or sig == nil or sig == "" or sig == st.built_sig then st.skill_cand = nil; return false end
+    local now = os.clock()
+    if st.skill_cand ~= sig or V.menu_open() then st.skill_cand = sig; st.skill_cand_t = now; return false end -- (the wait starts when the menu is closed)
+    if now - st.skill_cand_t < (cfg.skill_watch_wait or 4.0) then return false end
+    log("skills: the equipped skills changed from [" .. st.built_sig .. "] to [" .. sig .. "]")
     return true
 end
 function PT.enable()
@@ -2140,7 +2311,7 @@ end
 if cfg.ui_fix ~= false then
     local ok, err = pcall(function()
         local m = sdk.find_type_definition("app.GUIBase"):get_method("isDispEnableJob")
-        sdk.hook(m, function(args) thread.get_hook_storage().job = sdk.to_int64(args[2]) & 0xff end, function(retval)
+        hook(m, function(args) thread.get_hook_storage().job = sdk.to_int64(args[2]) & 0xff end, function(retval)
             if thread.get_hook_storage().job == JOB09 and (sdk.to_int64(retval) & 0xff) == 0 then
                 PT.state.ui_fix_hits = (PT.state.ui_fix_hits or 0) + 1
                 return sdk.to_ptr(1)
@@ -2153,7 +2324,7 @@ if cfg.ui_fix ~= false then
     -- drawn (Status page, character tab, party list, HUD); the Trickster crest is pattern 8 (3 Thief, 7 Magick Archer,
     -- 9 Warfarer, checked on screen in run 21).
     local ok2, err2 = pcall(function()
-        sdk.hook(sdk.find_type_definition("app.GUIBase.JobIconRef"):get_method("setup(app.Character.JobEnum)"), function(args)
+        hook(sdk.find_type_definition("app.GUIBase.JobIconRef"):get_method("setup(app.Character.JobEnum)"), function(args)
             local hs = thread.get_hook_storage(); hs.this = sdk.to_managed_object(args[2]); hs.job = sdk.to_int64(args[3]) & 0xff
         end, function(retval)
             local hs = thread.get_hook_storage()
@@ -2180,7 +2351,7 @@ if cfg.ui_fix ~= false then
     for _, spec in ipairs({ { "app.ui060601_01", "setupKeyGuide", "status" }, { "app.ui040101_00", "setupJobMenu", "guild" }, { "app.ui040101_00", "setupDisableJobs", "guild" }, { "app.ui040101_00", "setupContents", "guild" } }) do
         local ok3, err3 = pcall(function()
             local m = sdk.find_type_definition(spec[1]):get_method(spec[2])
-            sdk.hook(m, function(args) pcall(fix_jobinfo, sdk.to_managed_object(args[2]), spec[3]) end, nil)
+            hook(m, function(args) pcall(fix_jobinfo, sdk.to_managed_object(args[2]), spec[3]) end, nil)
         end)
         log("ui: JobInfoData fix hook on " .. spec[1] .. "." .. spec[2], ok3, err3 or "")
     end
@@ -2482,6 +2653,7 @@ function V.trick(c, s)
     -- the window stays open 0.4 s after the last tick she faced an enemy (it flickered faster than preempt_wait)
     if in_reach then PT.state.reach_until = now + 0.4 elseif PT.state.reach_until and now < PT.state.reach_until then in_reach = true end
     local etired = (cfg.effigy_min_stamina or 0) > 0 and (s.sfrac or 1.0) < cfg.effigy_min_stamina
+    if not etired and V.cast_busy(now) then etired = true end -- (0.2.8, see V.cast_busy)
     local pick
     if live > 0 and not s.hold then
         local ready = cfg.effigy ~= false and has_skill(96) and s.has and not possessed and close >= (cfg.effigy_min_enemies or 2)
@@ -2577,9 +2749,17 @@ function V.shell_data()
     log("shells: Job09 shell data", n, "entries; thrown smoke", tostring(V.sh_dust), "; effigy incense entries", en)
     return V.sh_ud
 end
+-- 0.2.8: an enemy in the air (the game's own flag; harpies). The dust ball is not thrown at one unless "dust_flying"
+-- is true: at 40 FPS the ball's reach is 11.7 m and the pawn threw at flying harpies, which move 3 to 6 m while the
+-- ball is on its way: 3 hits in 8 balls, against 10 in 12 on goblins (2026-11-12).
+function V.airborne(ch)
+    local a = false
+    pcall(function() a = ch:call("get_IsFlight") == true end)
+    return a
+end
 -- the living enemy closest to her facing, within `maxdeg` of it, between `near` and `far` metres (flat distance) and
 -- at most `maxdy` metres higher or lower than her (default 8)
-function V.front_enemy(c, near, far, maxdeg, maxdy)
+function V.front_enemy(c, near, far, maxdeg, maxdy, grounded)
     local tf = c.chara:call("get_Transform"); local pp = tf:call("get_Position"); local q = tf:call("get_Rotation")
     local fx, fz = 2 * (q.x * q.z + q.w * q.y), 1 - 2 * (q.x * q.x + q.y * q.y) -- her facing is the transform's Z axis
     local fl = math.sqrt(fx * fx + fz * fz); if fl < 0.001 then return nil end
@@ -2589,7 +2769,7 @@ function V.front_enemy(c, near, far, maxdeg, maxdy)
             local p = pos_of(e.chara)
             if p then
                 local dx, dz = p.x - pp.x, p.z - pp.z; local d = math.sqrt(dx * dx + dz * dz)
-                if d >= near and d <= far and d > 0.01 and math.abs(p.y - pp.y) < (maxdy or 8.0) then
+                if d >= near and d <= far and d > 0.01 and math.abs(p.y - pp.y) < (maxdy or 8.0) and not (grounded and V.airborne(e.chara)) then
                     local ang = math.deg(math.acos(math.max(-1, math.min(1, (dx * fx + dz * fz) / (d * fl)))))
                     if ang <= maxdeg and (not bang or ang < bang) then best, bang, bd = e.chara, ang, d end
                 end
@@ -2672,7 +2852,7 @@ function V.shell_hooks()
     V.ch_type = sdk.typeof("app.Character"); V.fx_stack = {}
     local okh, eh = pcall(function()
         -- the game's own effigy incense leaving her hand
-        sdk.hook(sdk.find_type_definition("app.ShellManager"):get_method("registShell"), function(args)
+        hook(sdk.find_type_definition("app.ShellManager"):get_method("registShell"), function(args)
             if not PT.enabled or not PT.state.ctx then return end
             pcall(function()
                 local now = os.clock()
@@ -2705,7 +2885,7 @@ function V.shell_hooks()
             end)
         end, function(r) return r end)
         -- the dust ball's hit: the game computes 0 damage for a smoke shell; the hit's damage is written after that
-        sdk.hook(sdk.find_type_definition("app.HitController"):get_method("calcDamageValue"), function(args)
+        hook(sdk.find_type_definition("app.HitController"):get_method("calcDamageValue"), function(args)
             V.dust_info = nil
             if not V.dust_live or os.clock() > V.dust_live then return end
             pcall(function()
@@ -2742,7 +2922,7 @@ function V.shell_hooks()
             if x:get_name() == "addHateParam" and x:get_num_params() == 3 and x:get_param_types()[2]:get_name() ~= "HateSendTypeID" then hm = x end
         end
         if hm then
-            sdk.hook(hm, function(args)
+            hook(hm, function(args)
                 if cfg.dust_no_aggro == false or not V.dust_p25 or not V.dust_live or os.clock() > V.dust_live then return end
                 local skip = false
                 pcall(function()
@@ -2757,7 +2937,7 @@ function V.shell_hooks()
         -- v48j: a fooled enemy forgets the party's pawns at the moment it sorts its ranking
         local ur = sdk.find_type_definition("app.HateSystem"):get_method("updateHateRanking")
         if ur then
-            sdk.hook(ur, function(args)
+            hook(ur, function(args)
                 local fools = PT.state.fools; if not fools then return end
                 pcall(function()
                     local hs = sdk.to_managed_object(args[2]); local a = hs and hs:get_address(); local set = PT.state.fool_gos
@@ -2775,7 +2955,7 @@ function V.shell_hooks()
             local nm = m:get_name()
             if nm == "requestHitEffect" or nm == "requestTerrainHitEffect" or nm == "requestEffect" or nm == "requestOmenEffect" then
                 local kind = (nm == "requestHitEffect" or nm == "requestTerrainHitEffect") and "hit" or "trail"
-                sdk.hook(m, function(args)
+                hook(m, function(args)
                     local stk = V.fx_stack; local mine = false
                     if V.dust_live and os.clock() <= V.dust_live then
                         pcall(function()
@@ -2796,7 +2976,7 @@ function V.shell_hooks()
         end
         for _, m in ipairs(sdk.find_type_definition("via.effect.script.EffectManager"):get_methods()) do
             if m:get_name() == "createEffectInternal" then
-                sdk.hook(m, function(args) end, function(ret)
+                hook(m, function(args) end, function(ret)
                     local kind = V.fx_kind; local sw = V.swing_fx
                     if not kind and not sw then return ret end
                     pcall(function()
@@ -2870,7 +3050,7 @@ function V.dust_safe(c)
             if e.hp > 0 then local p = pos_of(e.chara)
                 if p then local d2 = (p.x - pp.x) ^ 2 + (p.z - pp.z) ^ 2
                     if math.abs(p.y - pp.y) < 3.0 and d2 < lim * lim then return false end
-                    if d2 <= reach * reach and math.abs(p.y - pp.y) < (cfg.dust_height or 3.0) then inreach = true end
+                    if d2 <= reach * reach and math.abs(p.y - pp.y) < (cfg.dust_height or 3.0) and (cfg.dust_flying == true or not V.airborne(e.chara)) then inreach = true end
                 end
             end
         end
@@ -2938,12 +3118,27 @@ function V.fool_tick(c, now)
     end
     if left == 0 then st.fools = nil end
 end
+-- 0.2.8: the turn of a dust swing is written here, before the game's late update. Until 0.2.7 it was written from
+-- the frame callback (re.on_frame), which runs while the scene is locked for rendering: a transform written then
+-- keeps the copy the renderer reads, for good. Found 2026-11-12: after one such write the pawn's model stayed drawn
+-- where the swing began (still animated) while the pawn itself went on, unseen; the next swing moved the model to
+-- the next place. One write was enough (measured: transform position against its world matrix inside the lock).
+function V.turn_apply()
+    local st = PT.state; local y = st and st.dust_yaw
+    if not y then return end
+    st.dust_yaw = nil
+    local c = st.ctx; if not c or not PT.enabled then return end
+    local mf = sdk.get_managed_singleton("app.MainFlowManager")
+    if not (mf and mf:call("get_IsInGamePhase") and mf:call("get_FlowPhase") == 27) then return end
+    c.chara:call("get_Transform"):call("set_Rotation", Quaternion.new(math.cos(y / 2), 0, math.sin(y / 2), 0))
+end
+re.on_pre_application_entry("LateUpdateBehavior", guard("turn", function() V.turn_apply() end))
 -- one frame of a dust swing: she is turned to the target, and the ball leaves once she faces it (true = done)
 function V.dust_step(c, now)
     local st = PT.state
     local t = st.dust_target
     if t then local alive = false; pcall(function() alive = t:call("get_Hp") > 0 end); if not alive then t = nil end end
-    if not t then t = V.front_enemy(c, (cfg.dust_near or 4.0) - 2.0, V.reach() + 0.5, 180.0, cfg.dust_height or 3.0); st.dust_target = t end
+    if not t then t = V.front_enemy(c, (cfg.dust_near or 4.0) - 2.0, V.reach() + 0.5, 180.0, cfg.dust_height or 3.0, cfg.dust_flying ~= true); st.dust_target = t end
     if not t then if now >= st.dust_until then st.dust_blank = (st.dust_blank or 0) + 1; return true end return false end
     local tf = c.chara:call("get_Transform"); local pp = tf:call("get_Position"); local q = tf:call("get_Rotation"); local tp = pos_of(t)
     if not tp then return false end
@@ -2954,7 +3149,7 @@ function V.dust_step(c, now)
     local rate = cfg.dust_turn_rate or 420.0
     if rate > 0 and math.abs(diff) > 2.0 then
         local step = math.max(-rate * dt, math.min(rate * dt, diff)); local y = yaw + math.rad(step)
-        tf:call("set_Rotation", Quaternion.new(math.cos(y / 2), 0, math.sin(y / 2), 0)); diff = diff - step
+        st.dust_yaw = y; diff = diff - step -- (written by V.turn_apply before the game's late update, never from here)
     end
     if now < st.dust_due then return false end
     local last = now >= st.dust_until
@@ -3004,6 +3199,7 @@ function V.on_action(c, act)
     if act ~= ACT.dust then V.swing_fx = nil end
     PT.state.act_now = act -- (update_summon_gate is defined above the script's last_action local)
     if act:find("Job09_", 1, true) == 1 and not act:find("End", 1, true) then PT.state.casts = (PT.state.casts or 0) + 1 end
+    if act == SKILL_ACTION[97] or act == SKILL_ACTION[92] or act == SKILL_ACTION[96] then PT.state.cost_act_t = now end -- (V.cast_busy)
     if act == SKILL_ACTION[96] or act == "Job09_CastPossessionSmokeEx" then PT.state.effigy_t = now
     elseif act == SKILL_ACTION[93] then PT.state.floor_t = now
     elseif act == SKILL_ACTION[94] then PT.state.espial_t = now; PT.state.espial_start = now; PT.state.espial_sent = false; PT.state.espial_end_t = nil
@@ -3011,7 +3207,7 @@ function V.on_action(c, act)
     elseif act == ACT.heavy or act == SKILL_ACTION[95] then
         if act == ACT.heavy then PT.state.summon_act_t = now end
         V.say(c, "taunt")
-    elseif act == SKILL_ACTION[97] then V.say(c, "rally")
+    elseif act == SKILL_ACTION[97] then PT.state.rally_act_t = now; V.say(c, "rally")
     elseif act == SKILL_ACTION[92] then if PT.state.arisen_trouble then V.say(c, "screen") end end
     -- (a pick is only seen when its decision ends, so the slot is read from the decision she is executing now)
     local forced = PT.state.dust_force and now < PT.state.dust_force -- (PT.dust_test: a swing asked for by a test)
@@ -3200,7 +3396,7 @@ function V.soft_reset(why)
     V.auto.tries = 0; V.auto.next_try = os.clock() + 3.0; V.auto.seen = nil; V.auto.waits = 0
 end
 
-re.on_frame(function()
+re.on_frame(guard("frame callback", function()
     -- v47x: the test helpers (fight log, bring / spawn queues) only run in the plain InGame phase. The fight log used
     -- to call into the pawn every second while the scene was unloaded and at the title screen: with it on, the game
     -- crashed at the title in 2 of 6 returns on v47t-w; with it off, in 0 of 5 (2026-11-10).
@@ -3240,6 +3436,11 @@ re.on_frame(function()
                 if not okt then log("flow: teardown error:", et); pcall(V.soft_reset, "the party changed (after an error)") end
                 return
             end
+            if V.skills_changed() then
+                local okt, et = pcall(V.teardown, held, "the pawn's equipped skills changed")
+                if not okt then log("flow: teardown error:", et); pcall(V.soft_reset, "the pawn's equipped skills changed (after an error)") end
+                return
+            end
         end
         pump()
         local c = PT.state.ctx
@@ -3250,11 +3451,11 @@ re.on_frame(function()
         end
     end)
     if not ok then log("frame error:", err) end
-end)
+end))
 
 if cfg.auto_enable then
     local A = V.auto -- (v47: reset by V.soft_reset so a later save load enables again)
-    re.on_frame(function()
+    re.on_frame(guard("frame callback", function()
         if PT.enabled or PT.user_disabled or A.tries >= 30 or os.clock() < A.next_try then return end
         local mf = sdk.get_managed_singleton("app.MainFlowManager")
         if mf and mf:call("get_IsInGamePhase") and mf:call("get_FlowPhase") == 27 then
@@ -3276,7 +3477,7 @@ if cfg.auto_enable then
             end
             A.seen = addr
         end
-    end)
+    end))
 end
 
 -- censer picker: hand one of the Arisen's censers (not the one the Arisen holds equipped) to the pawn, or switch
@@ -3332,7 +3533,7 @@ function PT.give_censer(id)
     return ok
 end
 
-re.on_draw_ui(function()
+function PT.draw_panel()
     if imgui.tree_node("Pawn Trickster") then
         imgui.text("enabled: " .. tostring(PT.enabled))
         if imgui.button("enable (pawn -> Trickster)") then PT.enable() end
@@ -3340,6 +3541,9 @@ re.on_draw_ui(function()
         if imgui.button("disable (pawn back to job " .. tostring(cfg.revert_job) .. " / previous)") then PT.disable() end
         imgui.same_line()
         if imgui.button("status") then PT.status() end
+        local lchg, lval = imgui.checkbox("Enable debug logs (every step, for a bug report)", cfg.log == true)
+        if lchg then PT.set_log(lval) end
+        imgui.text("   reframework/data/PawnTrickster/log.txt (errors are always written; the last start: log.previous.txt)")
         local dchg, dval = imgui.checkbox("debug (force the test skill set at every load)", cfg.debug == true)
         if dchg then cfg.debug = dval; pcall(json.dump_file, CFG_PATH, cfg); log("config: debug", tostring(dval), "(applies at the next enable)") end
         if PT.enabled and imgui.tree_node("Censer") then
@@ -3381,6 +3585,7 @@ re.on_draw_ui(function()
         for i = math.max(1, #PT.log_lines - 12), #PT.log_lines do imgui.text(PT.log_lines[i]) end
         imgui.tree_pop()
     end
-end)
+end
+re.on_draw_ui(guard("REFramework panel", function() PT.draw_panel() end))
 
 log("PawnTrickster loaded (auto_enable=" .. tostring(cfg.auto_enable) .. ")")
