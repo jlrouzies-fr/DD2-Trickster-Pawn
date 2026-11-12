@@ -1,0 +1,2 @@
+local st = PawnTrickster.state; local c = PawnTrickster.cfg
+out("shots", tostring(st.dust_shots or 0), "hits", tostring(st.dust_hits or 0), "swings", tostring(st.dust_swings or 0), "blank", tostring(st.dust_blank or 0), "leadsum", string.format("%.1f", st.dust_lead_sum or 0), "lead", tostring(c.dust_lead), "safe", tostring(c.dust_safe), "only", tostring(c.only_slot), "fps", string.format("%.0f", st.fps or 0))

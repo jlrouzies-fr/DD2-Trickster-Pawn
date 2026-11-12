@@ -1,0 +1,5 @@
+-- TEST: the Arisen plays a Trickster action by name (no input)
+local pl = sdk.get_managed_singleton("app.CharacterManager"):call("get_ManualPlayer"); local human = pl:call("get_Human")
+local sel = human:get_field("<HumanActionSelector>k__BackingField")
+local ok, e = pcall(function() sel:call("requestAction(System.String, System.UInt32)", _G.__ac, 0) end)
+out("Arisen asked", tostring(_G.__ac), tostring(ok), tostring(e))
