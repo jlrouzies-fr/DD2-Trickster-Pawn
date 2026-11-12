@@ -249,9 +249,9 @@ end
 
 -- 0.2.7: log.txt holds everything a bug report needs, whatever "log" says. At each start the last log becomes
 -- log.previous.txt (so a crash survives one relaunch) and log.txt begins with a header (build, REFramework, the
--- settings changed from their defaults). With "log": false it then only gets errors: lines whose first word part
--- says "error" or "failed", and every error thrown inside the script's hooks and frame callbacks (see guard below),
--- at most ERR_CAP of them per start. With "log": true it gets every step, as before.
+-- settings changed from their defaults). With "log": false it then only gets errors: lines that say "error",
+-- "failed", "not found", "missing" or "could not", which includes every error thrown inside the script's hooks and
+-- frame callbacks (see guard below), at most ERR_CAP of them per start. With "log": true it gets every step, as before.
 PT.VERSION = "0.2.7"
 local PREV_PATH = DATA_DIR .. "/log.previous.txt"
 local ERR_CAP, err_written = 300, 0
@@ -272,6 +272,14 @@ do
     local f = io.open(LOG_PATH, "w")
     if f then f:close() end
 end
+-- what counts as an error line with "log": false. Checked against an 8 MB log of 118,955 lines: 105 matches, all of
+-- them real errors (action names such as HighFive_Failed have a capital F and do not match).
+local function is_problem(line)
+    for _, w in ipairs({ "error", "failed", "not found", "missing", "could not" }) do
+        if line:find(w, 1, true) then return true end
+    end
+    return false
+end
 local function log(...)
     local parts = {}
     for i = 1, select("#", ...) do parts[#parts + 1] = tostring((select(i, ...))) end
@@ -280,7 +288,7 @@ local function log(...)
     if #PT.log_lines > 400 then table.remove(PT.log_lines, 1) end
     if cfg.log then
         write_line(line)
-    elseif err_written < ERR_CAP and ((parts[1] or ""):find("error") or (parts[1] or ""):find("failed")) then
+    elseif err_written < ERR_CAP and is_problem(line) then
         err_written = err_written + 1
         write_line(err_written < ERR_CAP and line or (line .. "  (no more errors are written until the next start)"))
     end
