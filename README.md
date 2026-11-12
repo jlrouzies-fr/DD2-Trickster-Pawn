@@ -40,18 +40,24 @@ To uninstall: REFramework menu > Script Generated UI > Pawn Trickster > disable,
 
 ## Reporting a bug
 
-1. Delete `reframework/data/PawnTrickster/log.txt` if it is there (the mod only ever adds to it), set
-   `"log": true` in `config.json`, and start the game.
-2. Play until the problem happens and note the time on your clock (every log line starts with it).
-3. After a crash, collect the files **before** starting the game again: the next launch writes over
-   `re2_framework_log.txt` and can replace the crash dump.
-4. Open an [issue](../../issues/new?template=bug_report.yml) (or post in the Nexus Bugs tab) and attach:
-   - `reframework/data/PawnTrickster/log.txt`, `config.json` and `pawns.json`
-   - `re2_framework_log.txt` from the game folder (REFramework's log: script errors are there)
-   - after a crash, `reframework_crash.dmp` from the game folder, if there is one
-   - what the pawn did and what you expected, the time, the enemies, the party, the mod version (first line of
-     `README.txt`) and your other mods that touch pawns, skills or AI. A short video of the moment helps a lot.
-5. Set `"log"` back to `false` afterwards: the log grows quickly in fights.
+Everything is in `reframework/data/PawnTrickster/`. `log.txt` is the log of the current game start: it always holds
+the mod's build, the REFramework version, the settings changed from their defaults and every error of the mod (errors
+in its hooks and frame callbacks are caught and written there with their stack). `log.previous.txt` is the start
+before, so after a crash and a relaunch the crash's log is still there.
+
+1. REFramework menu > Script Generated UI > Pawn Trickster > tick **Enable debug logs** (or `"log": true` in
+   `config.json`). It can be ticked right after the bug: the last 400 steps kept in memory are written at once.
+2. Note the time on your clock when the problem happens (every log line starts with it).
+3. Open an [issue](../../issues/new?template=bug_report.yml) (or post in the Nexus Bugs tab) and attach:
+   - `log.txt`; after a crash, `log.previous.txt` if you started the game again, and `reframework_crash.dmp` from
+     the game folder if there is one
+   - `pawns.json` for a censer, skill or augment problem
+   - what the pawn did and what you expected, the time, the enemies, the party and your other mods that touch pawns,
+     skills or AI. A short video of the moment helps a lot.
+4. Untick it afterwards: the log grows quickly in fights.
+
+If `log.txt` does not start with today's date, the mod did not load: send `re2_framework_log.txt` from the game
+folder instead.
 
 ## Contributing
 

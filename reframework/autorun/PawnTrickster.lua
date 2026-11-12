@@ -1,8 +1,8 @@
--- PawnTrickster.lua - Trickster main pawn (beta 0.2.6): the main pawn takes the Trickster vocation (Job09) and fights with it.
+-- PawnTrickster.lua - Trickster main pawn (beta 0.2.7): the main pawn takes the Trickster vocation (Job09) and fights with it.
 --
 -- With "auto_enable": true (the default) the pawn becomes a Trickster at every save load; set it to false in
 -- reframework/data/PawnTrickster/config.json to run PawnTrickster.enable() / disable() by hand (REFramework menu >
--- Script Generated UI > Pawn Trickster). Every step is guarded; "log": true writes reframework/data/PawnTrickster/log.txt.
+-- Script Generated UI > Pawn Trickster). Every step is guarded; errors always go to reframework/data/PawnTrickster/log.txt; "log": true (or the panel's log switch) writes every step.
 -- Back up the save folder before the first use: a pawn stored on Job09 is not something the online rift expects.
 --
 -- What enable() does (see trickster/README.md for the evidence behind each step):
@@ -240,8 +240,38 @@ do
     end
     pcall(json.dump_file, CFG_PATH, cfg)
     pcall(json.dump_file, DEF_PATH, defaults)
+    PT.cfg_changed = {} -- (for the header of log.txt)
+    for k, v in pairs(cfg) do -- (keys an older version wrote that this one has no default for count only when not false)
+        if (defaults[k] ~= nil or v ~= false) and not same(defaults[k], v) then PT.cfg_changed[#PT.cfg_changed + 1] = k end
+    end
+    table.sort(PT.cfg_changed)
 end
 
+-- 0.2.7: log.txt holds everything a bug report needs, whatever "log" says. At each start the last log becomes
+-- log.previous.txt (so a crash survives one relaunch) and log.txt begins with a header (build, REFramework, the
+-- settings changed from their defaults). With "log": false it then only gets errors: lines whose first word part
+-- says "error" or "failed", and every error thrown inside the script's hooks and frame callbacks (see guard below),
+-- at most ERR_CAP of them per start. With "log": true it gets every step, as before.
+PT.VERSION = "0.2.7"
+local PREV_PATH = DATA_DIR .. "/log.previous.txt"
+local ERR_CAP, err_written = 300, 0
+local function write_line(line)
+    local f = io.open(LOG_PATH, "a")
+    if f then f:write(line, "\n"); f:close() end
+end
+do
+    local old = io.open(LOG_PATH, "rb")
+    if old then
+        local size = old:seek("end") or 0
+        old:seek("set", math.max(0, size - 4 * 1024 * 1024)) -- (logs of 0.2.6 and older were never emptied: keep the last 4 MB)
+        local body = old:read("a") or ""
+        old:close()
+        local p = io.open(PREV_PATH, "wb")
+        if p then p:write(body); p:close() end
+    end
+    local f = io.open(LOG_PATH, "w")
+    if f then f:close() end
+end
 local function log(...)
     local parts = {}
     for i = 1, select("#", ...) do parts[#parts + 1] = tostring((select(i, ...))) end
@@ -249,10 +279,89 @@ local function log(...)
     PT.log_lines[#PT.log_lines + 1] = line
     if #PT.log_lines > 400 then table.remove(PT.log_lines, 1) end
     if cfg.log then
-        local f = io.open(LOG_PATH, "a")
-        if f then f:write(line, "\n"); f:close() end
+        write_line(line)
+    elseif err_written < ERR_CAP and ((parts[1] or ""):find("error") or (parts[1] or ""):find("failed")) then
+        err_written = err_written + 1
+        write_line(err_written < ERR_CAP and line or (line .. "  (no more errors are written until the next start)"))
     end
 end
+-- "log" switched on from the REFramework panel: the steps kept in memory (the last 400) go to the file first, so a
+-- player who turns it on right after a bug still sends what led to it
+function PT.set_log(on)
+    on = on == true
+    if on == (cfg.log == true) then return end
+    if on then
+        write_line(os.date("%H:%M:%S ") .. "log: switched on; the " .. #PT.log_lines .. " steps kept in memory follow")
+        for _, l in ipairs(PT.log_lines) do write_line("  " .. l) end
+    end
+    cfg.log = on
+    pcall(json.dump_file, CFG_PATH, cfg)
+    log("log: " .. (on and "on (every step is written)" or "off (only errors are written)"))
+end
+do
+    local function rf(name)
+        local ok, v = pcall(function() return reframework[name](reframework) end)
+        return ok and v ~= nil and tostring(v) or "?"
+    end
+    write_line(string.format("PawnTrickster %s started %s", PT.VERSION, os.date("%Y-%m-%d %H:%M:%S")))
+    write_line(string.format("REFramework %s %s (commit %s, %s commits, built %s), %s", rf("get_tag"), rf("get_branch"),
+        rf("get_commit_hash"):sub(1, 10), rf("get_commit_count"), rf("get_build_date"), _VERSION or "Lua"))
+    local diff = {}
+    for _, k in ipairs(PT.cfg_changed or {}) do
+        local v = cfg[k]
+        diff[#diff + 1] = k .. "=" .. (type(v) == "table" and "{...}" or tostring(v))
+    end
+    write_line("settings changed from the defaults: " .. (#diff > 0 and table.concat(diff, ", ") or "none"))
+    if PT.cfg_moved and #PT.cfg_moved > 0 then write_line("settings that follow a new default: " .. table.concat(PT.cfg_moved, ", ")) end
+    write_line("log: " .. (cfg.log and "every step" or "errors only (tick \"Enable debug logs\" in the REFramework panel for a bug report)"))
+end
+
+-- every hook and frame callback of the script runs through guard(): an error is written to log.txt with its stack
+-- (the first 3 of each place, then every 100th with a count) instead of only to REFramework's log. A failed pre-hook
+-- lets the game's method run; a failed post-hook returns the game's own result.
+local guard_n = {}
+local function guard_report(where, msg)
+    local n = (guard_n[where] or 0) + 1
+    guard_n[where] = n
+    if n <= 3 then
+        log("error in " .. where .. (n == 3 and " (3rd time; from now on every 100th):" or ":"), msg)
+    elseif n % 100 == 0 then
+        log("error in " .. where .. " (" .. n .. " times):", msg)
+    end
+end
+local function guard_parts(kind, fn)
+    local ok, info = pcall(function() return debug.getinfo(fn, "S") end)
+    local where = kind .. " at line " .. tostring(ok and info and info.linedefined or "?")
+    local function handler(e) -- runs before the stack unwinds: the stack is only written for the first 3 errors
+        if (guard_n[where] or 0) < 3 and debug and debug.traceback then return debug.traceback(tostring(e), 2) end
+        return tostring(e)
+    end
+    return where, handler
+end
+local function guard(kind, fn)
+    local where, handler = guard_parts(kind, fn)
+    local function done(ok, ...)
+        if ok then return ... end
+        guard_report(where, (...))
+        return nil
+    end
+    return function(...) return done(xpcall(fn, handler, ...)) end
+end
+local function hook(m, pre, post)
+    local gpre = pre and guard("pre-hook", pre)
+    local gpost
+    if post then
+        local where, handler = guard_parts("post-hook", post)
+        gpost = function(retval)
+            local ok, r = xpcall(post, handler, retval)
+            if ok then return r end
+            guard_report(where, r)
+            return retval
+        end
+    end
+    return sdk.hook(m, gpre, gpost)
+end
+PT.guard = guard -- (for the test tools)
 
 -- enum values read live on 2026-11-08 (see trickster/live/enums.txt)
 local JOB09 = 9
@@ -767,7 +876,7 @@ local function hook_job_string(typename, method_name, name_for_job9, is_static)
     local td = sdk.find_type_definition(typename)
     local m = td and td:get_method(method_name)
     if not m then log("hook: method not found", typename, method_name); return end
-    sdk.hook(m, function(args)
+    hook(m, function(args)
         -- static: args[2] is the first parameter; instance: args[3]
         local a = is_static and args[2] or args[3]
         job_arg[method_name] = a and (sdk.to_int64(a) & 0xff) or -1
@@ -785,7 +894,7 @@ local function hook_job_hash(typename, method_name, name_for_job9, is_static)
     local td = sdk.find_type_definition(typename)
     local m = td and td:get_method(method_name)
     if not m then log("hook: method not found", typename, method_name); return end
-    sdk.hook(m, function(args)
+    hook(m, function(args)
         local a = is_static and args[2] or args[3]
         job_arg[method_name] = a and (sdk.to_int64(a) & 0xff) or -1
     end, function(retval)
@@ -2140,7 +2249,7 @@ end
 if cfg.ui_fix ~= false then
     local ok, err = pcall(function()
         local m = sdk.find_type_definition("app.GUIBase"):get_method("isDispEnableJob")
-        sdk.hook(m, function(args) thread.get_hook_storage().job = sdk.to_int64(args[2]) & 0xff end, function(retval)
+        hook(m, function(args) thread.get_hook_storage().job = sdk.to_int64(args[2]) & 0xff end, function(retval)
             if thread.get_hook_storage().job == JOB09 and (sdk.to_int64(retval) & 0xff) == 0 then
                 PT.state.ui_fix_hits = (PT.state.ui_fix_hits or 0) + 1
                 return sdk.to_ptr(1)
@@ -2153,7 +2262,7 @@ if cfg.ui_fix ~= false then
     -- drawn (Status page, character tab, party list, HUD); the Trickster crest is pattern 8 (3 Thief, 7 Magick Archer,
     -- 9 Warfarer, checked on screen in run 21).
     local ok2, err2 = pcall(function()
-        sdk.hook(sdk.find_type_definition("app.GUIBase.JobIconRef"):get_method("setup(app.Character.JobEnum)"), function(args)
+        hook(sdk.find_type_definition("app.GUIBase.JobIconRef"):get_method("setup(app.Character.JobEnum)"), function(args)
             local hs = thread.get_hook_storage(); hs.this = sdk.to_managed_object(args[2]); hs.job = sdk.to_int64(args[3]) & 0xff
         end, function(retval)
             local hs = thread.get_hook_storage()
@@ -2180,7 +2289,7 @@ if cfg.ui_fix ~= false then
     for _, spec in ipairs({ { "app.ui060601_01", "setupKeyGuide", "status" }, { "app.ui040101_00", "setupJobMenu", "guild" }, { "app.ui040101_00", "setupDisableJobs", "guild" }, { "app.ui040101_00", "setupContents", "guild" } }) do
         local ok3, err3 = pcall(function()
             local m = sdk.find_type_definition(spec[1]):get_method(spec[2])
-            sdk.hook(m, function(args) pcall(fix_jobinfo, sdk.to_managed_object(args[2]), spec[3]) end, nil)
+            hook(m, function(args) pcall(fix_jobinfo, sdk.to_managed_object(args[2]), spec[3]) end, nil)
         end)
         log("ui: JobInfoData fix hook on " .. spec[1] .. "." .. spec[2], ok3, err3 or "")
     end
@@ -2672,7 +2781,7 @@ function V.shell_hooks()
     V.ch_type = sdk.typeof("app.Character"); V.fx_stack = {}
     local okh, eh = pcall(function()
         -- the game's own effigy incense leaving her hand
-        sdk.hook(sdk.find_type_definition("app.ShellManager"):get_method("registShell"), function(args)
+        hook(sdk.find_type_definition("app.ShellManager"):get_method("registShell"), function(args)
             if not PT.enabled or not PT.state.ctx then return end
             pcall(function()
                 local now = os.clock()
@@ -2705,7 +2814,7 @@ function V.shell_hooks()
             end)
         end, function(r) return r end)
         -- the dust ball's hit: the game computes 0 damage for a smoke shell; the hit's damage is written after that
-        sdk.hook(sdk.find_type_definition("app.HitController"):get_method("calcDamageValue"), function(args)
+        hook(sdk.find_type_definition("app.HitController"):get_method("calcDamageValue"), function(args)
             V.dust_info = nil
             if not V.dust_live or os.clock() > V.dust_live then return end
             pcall(function()
@@ -2742,7 +2851,7 @@ function V.shell_hooks()
             if x:get_name() == "addHateParam" and x:get_num_params() == 3 and x:get_param_types()[2]:get_name() ~= "HateSendTypeID" then hm = x end
         end
         if hm then
-            sdk.hook(hm, function(args)
+            hook(hm, function(args)
                 if cfg.dust_no_aggro == false or not V.dust_p25 or not V.dust_live or os.clock() > V.dust_live then return end
                 local skip = false
                 pcall(function()
@@ -2757,7 +2866,7 @@ function V.shell_hooks()
         -- v48j: a fooled enemy forgets the party's pawns at the moment it sorts its ranking
         local ur = sdk.find_type_definition("app.HateSystem"):get_method("updateHateRanking")
         if ur then
-            sdk.hook(ur, function(args)
+            hook(ur, function(args)
                 local fools = PT.state.fools; if not fools then return end
                 pcall(function()
                     local hs = sdk.to_managed_object(args[2]); local a = hs and hs:get_address(); local set = PT.state.fool_gos
@@ -2775,7 +2884,7 @@ function V.shell_hooks()
             local nm = m:get_name()
             if nm == "requestHitEffect" or nm == "requestTerrainHitEffect" or nm == "requestEffect" or nm == "requestOmenEffect" then
                 local kind = (nm == "requestHitEffect" or nm == "requestTerrainHitEffect") and "hit" or "trail"
-                sdk.hook(m, function(args)
+                hook(m, function(args)
                     local stk = V.fx_stack; local mine = false
                     if V.dust_live and os.clock() <= V.dust_live then
                         pcall(function()
@@ -2796,7 +2905,7 @@ function V.shell_hooks()
         end
         for _, m in ipairs(sdk.find_type_definition("via.effect.script.EffectManager"):get_methods()) do
             if m:get_name() == "createEffectInternal" then
-                sdk.hook(m, function(args) end, function(ret)
+                hook(m, function(args) end, function(ret)
                     local kind = V.fx_kind; local sw = V.swing_fx
                     if not kind and not sw then return ret end
                     pcall(function()
@@ -3200,7 +3309,7 @@ function V.soft_reset(why)
     V.auto.tries = 0; V.auto.next_try = os.clock() + 3.0; V.auto.seen = nil; V.auto.waits = 0
 end
 
-re.on_frame(function()
+re.on_frame(guard("frame callback", function()
     -- v47x: the test helpers (fight log, bring / spawn queues) only run in the plain InGame phase. The fight log used
     -- to call into the pawn every second while the scene was unloaded and at the title screen: with it on, the game
     -- crashed at the title in 2 of 6 returns on v47t-w; with it off, in 0 of 5 (2026-11-10).
@@ -3250,11 +3359,11 @@ re.on_frame(function()
         end
     end)
     if not ok then log("frame error:", err) end
-end)
+end))
 
 if cfg.auto_enable then
     local A = V.auto -- (v47: reset by V.soft_reset so a later save load enables again)
-    re.on_frame(function()
+    re.on_frame(guard("frame callback", function()
         if PT.enabled or PT.user_disabled or A.tries >= 30 or os.clock() < A.next_try then return end
         local mf = sdk.get_managed_singleton("app.MainFlowManager")
         if mf and mf:call("get_IsInGamePhase") and mf:call("get_FlowPhase") == 27 then
@@ -3276,7 +3385,7 @@ if cfg.auto_enable then
             end
             A.seen = addr
         end
-    end)
+    end))
 end
 
 -- censer picker: hand one of the Arisen's censers (not the one the Arisen holds equipped) to the pawn, or switch
@@ -3332,7 +3441,7 @@ function PT.give_censer(id)
     return ok
 end
 
-re.on_draw_ui(function()
+re.on_draw_ui(guard("REFramework panel", function()
     if imgui.tree_node("Pawn Trickster") then
         imgui.text("enabled: " .. tostring(PT.enabled))
         if imgui.button("enable (pawn -> Trickster)") then PT.enable() end
@@ -3340,6 +3449,9 @@ re.on_draw_ui(function()
         if imgui.button("disable (pawn back to job " .. tostring(cfg.revert_job) .. " / previous)") then PT.disable() end
         imgui.same_line()
         if imgui.button("status") then PT.status() end
+        local lchg, lval = imgui.checkbox("Enable debug logs (every step, for a bug report)", cfg.log == true)
+        if lchg then PT.set_log(lval) end
+        imgui.text("   reframework/data/PawnTrickster/log.txt (errors are always written; the last start: log.previous.txt)")
         local dchg, dval = imgui.checkbox("debug (force the test skill set at every load)", cfg.debug == true)
         if dchg then cfg.debug = dval; pcall(json.dump_file, CFG_PATH, cfg); log("config: debug", tostring(dval), "(applies at the next enable)") end
         if PT.enabled and imgui.tree_node("Censer") then
@@ -3381,6 +3493,6 @@ re.on_draw_ui(function()
         for i = math.max(1, #PT.log_lines - 12), #PT.log_lines do imgui.text(PT.log_lines[i]) end
         imgui.tree_pop()
     end
-end)
+end))
 
 log("PawnTrickster loaded (auto_enable=" .. tostring(cfg.auto_enable) .. ")")

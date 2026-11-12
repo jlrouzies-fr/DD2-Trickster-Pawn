@@ -1,5 +1,5 @@
-Trickster Main Pawn 0.2.6 (beta) - REFramework script
-Version 2 on Nexus. The numbers 0.x.y in this file are the author's build numbers.
+Trickster Main Pawn 0.2.7 (beta) - REFramework script
+The numbers 0.x.y in this file are the author's build numbers; Nexus counts its own versions (1, 2, 3).
 
 What it does
 - At every save load your main pawn becomes a Trickster and holds a censer.
@@ -80,7 +80,8 @@ Settings (reframework/data/PawnTrickster/config.json, written on the first start
 - "resummon_seconds": the pause before a destroyed decoy is summoned again in battle (s).
   "resummon_calm": true brings it back out of battle as well (0.2.3 and earlier did).
 - "debug": true forces a fixed test skill set at every load (for testing only).
-- "log": true writes a step-by-step log to log.txt in this folder (for bug reports).
+- "log": true writes every step to log.txt in this folder (for bug reports); "Enable debug logs"
+  in the mod's REFramework panel does the same. Errors are written always.
 - "party_watch", "equip_by_game", "rule_drop", "cast_in_ready": switches back to older behaviour.
   You should not need them.
 - pawns.json in this folder is the mod's memory of your pawn's censer, skills and augments.
@@ -119,6 +120,8 @@ Known limits (beta)
   see when they hire your pawn online.
 
 Fixed
+- 0.2.7: errors of the mod went only to REFramework's log; log.txt now keeps them always, starts
+  fresh at each game start (the one before: log.previous.txt) and can be switched on in the panel.
 - 0.2.6: Latching Effigy flew over small enemies standing level with the pawn or lower.
 - 0.2.5: Latching Effigy was cast in any direction and at small enemies it flies over; Dragon's
   Delusion could drain all stamina.
@@ -132,19 +135,24 @@ Other mods
   touches the main pawn.
 
 Bug reports
-1. Delete reframework/data/PawnTrickster/log.txt if it is there (the mod only ever adds to it, it
-   is never emptied), then set "log": true in config.json and start the game.
-2. Play until the problem happens and note the time on your clock (every log line starts with it).
-3. If the game crashed, collect the files BEFORE starting the game again: the next launch writes
-   over re2_framework_log.txt and can replace the crash dump.
-4. Send, on Nexus (Bugs tab) or GitHub (Issues):
-   - reframework/data/PawnTrickster/log.txt, config.json and pawns.json (all in this folder)
-   - re2_framework_log.txt from the game folder (REFramework's own log: script errors are there)
-   - after a crash, reframework_crash.dmp from the game folder, if there is one
-   - what the pawn did and what you expected, the time, the enemies, who was in the party, the
-     first line of this file, and your other mods that change pawns, skills or AI
-   A short video of the moment helps a lot.
-5. Set "log" back to false afterwards: the log grows quickly in fights.
+Everything is in this folder (reframework/data/PawnTrickster):
+- log.txt: the log of the current game start. It always holds the mod's build, your REFramework
+  version, the settings you changed and every error of the mod. With "Enable debug logs" ticked it
+  also holds every step the pawn takes.
+- log.previous.txt: the log of the start before (after a crash, that is the one of the crash).
+1. Turn the debug logs on: REFramework menu > Script Generated UI > Pawn Trickster > tick
+   "Enable debug logs" (or "log": true in config.json). You can do it right after the bug: the last
+   400 steps the mod keeps in memory are written at once.
+2. Note the time on your clock when the problem happens (every log line starts with it).
+3. Send, on Nexus (Bugs tab) or GitHub (Issues):
+   - log.txt; after a crash, log.previous.txt if you started the game again, and
+     reframework_crash.dmp from the game folder if there is one
+   - for a censer, skill or augment problem, pawns.json too
+   - what the pawn did and what you expected, the time, the enemies, who was in the party, and
+     your other mods that change pawns, skills or AI. A short video of the moment helps a lot.
+4. Untick it afterwards: the log grows quickly in fights.
+If log.txt does not start with today's date, the mod did not load at all: send re2_framework_log.txt
+from the game folder instead.
 
 Source and bug reports: https://github.com/jlrouzies-fr/DD2-Trickster-Pawn
 

@@ -5,10 +5,9 @@ body:
   - type: markdown
     attributes:
       value: |
-        Before you reproduce the problem: delete `reframework/data/PawnTrickster/log.txt` (the mod only ever adds to it),
-        set `"log": true` in `reframework/data/PawnTrickster/config.json`, and start the game.
-        After a crash, collect the files **before** starting the game again: the next launch writes over
-        `re2_framework_log.txt` and can replace the crash dump.
+        The files are in `reframework/data/PawnTrickster/`. Before you send them, tick **Enable debug logs** in
+        REFramework menu > Script Generated UI > Pawn Trickster (it can be done right after the bug: the last 400 steps
+        are written at once). After a crash and a relaunch, the crash's log is `log.previous.txt`.
   - type: textarea
     id: what
     attributes:
@@ -39,10 +38,9 @@ body:
       label: Attached files
       description: Drag them into the box below.
       options:
-        - label: reframework/data/PawnTrickster/log.txt (with "log" true)
-        - label: reframework/data/PawnTrickster/config.json and pawns.json
-        - label: re2_framework_log.txt from the game folder
-        - label: after a crash, reframework_crash.dmp from the game folder (zip it), if there is one
+        - label: log.txt (with Enable debug logs ticked)
+        - label: after a crash, log.previous.txt (if the game was started again) and reframework_crash.dmp from the game folder (zipped), if there is one
+        - label: pawns.json (for a censer, skill or augment problem)
   - type: textarea
     id: attachments
     attributes:
