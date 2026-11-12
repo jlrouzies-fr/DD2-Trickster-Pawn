@@ -4,7 +4,7 @@ A REFramework script for Dragon's Dogma 2 that makes your **main pawn a Trickste
 
 In the vanilla game the Trickster is an Arisen-only vocation: pawns have no Trickster combat logic, no Trickster
 entry in their Vocation Guild list and no censer handling. This mod adds all three through the game's own systems.
-Current version: **0.2.6 (beta)**. Releases are on Nexus Mods; this repository holds the source, the development
+Current version: **0.2.8 (beta)**. Releases are on Nexus Mods; this repository holds the source, the development
 notes and the tools used to test it.
 
 ## What the pawn does
@@ -16,10 +16,10 @@ notes and the tools used to test it.
   enemies or groups, Delusory Screen when you take a burst of damage, and the rank 4-7 skills (Latching Effigy,
   Fickle Floor, Espial Incense, Scented Alarum) when they are equipped and fit.
 - It holds about 7-12 m from its target instead of walking into melee.
-- Between skills it throws a ball of incense smoke at an enemy in range (0.2.6): a little damage, and the enemy does
-  not turn on the pawn for it.
+- Between skills it throws a ball of incense smoke at an enemy on the ground in range: a little damage, and the
+  enemy does not turn on the pawn for it.
 - Trickster shows up in the pawn's Vocation Guild list, Status page and skill pages; discipline, rank and skills go
-  through the game's own menus.
+  through the game's own menus, and a skill change at the guild is used without a reload (0.2.8).
 - Hired pawns keep their own behaviour (tested with a Mage, Thief, Archer and Fighter).
 
 The full player-facing text, with settings and known limits, is

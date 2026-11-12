@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.8
+
+Fixes the pawn's model staying where it had thrown its smoke ball while the pawn itself went on unseen (in 0.2.6 and 0.2.7, after a throw for which the pawn had to turn): the script turned the pawn while the game had the scene locked for rendering, and from then on the renderer kept its old copy of the pawn's position until the next such turn. The turn is now applied before the game's late update. Skills equipped or removed at the Vocation Guild are used without a reload: a few seconds after the menu is closed the pawn is set up again (`skill_watch`, `skill_watch_wait`). Dragon's Delusion, Delusory Screen and Latching Effigy no longer start within 6 s of another costly cast, nor Aromatic Rally within 6 s of another Rally (`cast_spacing`): the pawn ran out of stamina behind such pairs. The smoke ball is not thrown at enemies in the air any more (`dust_flying`): most of those balls missed; on the ground 8 or 9 balls in 10 hit. The log header lists settings this version does not know apart from the ones you changed.
+
 ## 0.2.7
 
 Bug reports need only the mod's own folder. Every error in the script's hooks and frame callbacks is caught and written to `log.txt` with its stack (before, some went only to REFramework's log); a failed hook lets the game's own method or result through. `log.txt` is always written, also with debug logs off: a header (build, REFramework version, the settings changed from their defaults) and the errors. It starts fresh at each game start and the one before is kept as `log.previous.txt`, so a crash's log survives the relaunch. **Enable debug logs** in the mod's REFramework panel switches the full step-by-step log on without editing config.json, and first writes the last 400 steps kept in memory, so it can be ticked right after a bug.

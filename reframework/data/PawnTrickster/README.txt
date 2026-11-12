@@ -1,4 +1,4 @@
-Trickster Main Pawn 0.2.7 (beta) - REFramework script
+Trickster Main Pawn 0.2.8 (beta) - REFramework script
 The numbers 0.x.y in this file are the author's build numbers; Nexus counts its own versions (1, 2, 3).
 
 What it does
@@ -19,8 +19,10 @@ What it does
   enemy 4-14 m away it throws a puff of incense smoke at it, by hand (the Trickster's own
   throwing move). A hit does a little damage (20 + 5 for each level of the pawn) and does not
   draw the enemy's attention to the pawn. While the decoy is out, the enemy is fooled for 6 s: it
-  lets go of your pawns and goes for the decoy. It is a filler for the time no skill is due: in a
-  test fight the pawn threw one about every 15 s, and two in three hit.
+  lets go of your pawns and goes for the decoy. It is a filler for the time no skill is due: in
+  test fights the pawn threw one every 15 to 25 s of battle at 30 FPS and about three times as
+  often at 40 FPS (the ball reaches farther there); 8 or 9 balls in 10 hit an enemy on the ground.
+  It is not thrown at an enemy in the air (0.2.8).
 - Rank 4 to 7 skills, each only when equipped:
   Latching Effigy: decoy out, two or more enemies around the pawn, and the pawn facing one that
   is 3-10 m away. 0.2.6: the mod throws the incense itself, at the target's legs. The game's own
@@ -64,13 +66,16 @@ Settings (reframework/data/PawnTrickster/config.json, written on the first start
   pawn comes (m), "regroup_cooldown" the pause between two dashes (s).
 - "rally_distance" (m), "rally_cooldown" (s) and "rally_min_stamina" (0 to 1) set when Aromatic
   Rally may start. "delusion_min_stamina", "screen_min_stamina", "effigy_min_stamina": the same
-  floor for those skills.
+  floor for those skills. "cast_spacing" (s, 0.2.8): those three are not started this soon after
+  an Aromatic Rally, a Delusory Screen or a Latching Effigy began (that cast is still taking its
+  stamina), and Aromatic Rally not this soon after another Rally.
 - "effigy_near", "effigy_far" (m), "effigy_aim_deg": where an enemy has to be for Latching Effigy.
   "effigy_rethrow": false gives the throw back to the game; "effigy_small_rise": 1.7 then makes
   the pawn cast it at small enemies only when they stand higher (what 0.2.5 did).
 - "dust": false switches the smoke ball off. "dust_damage": its damage (0 = "dust_damage_base"
   + "dust_damage_level" for each level of the pawn). "dust_cooldown" (s): the pause between two.
-  "dust_near", "dust_far" (m): how far the enemy may be. "dust_safe" (m): no swing while an enemy
+  "dust_near", "dust_far" (m): how far the enemy may be. "dust_flying": true throws at enemies in
+  the air as well (most of those balls miss). "dust_safe" (m): no swing while an enemy
   is closer to the pawn than this. "dust_no_aggro": false lets a hit draw the enemy's attention,
   like the game's own thrown smoke does. "dust_fool": false stops the hit from turning the enemy
   to the decoy; "dust_fool_seconds" is how long that lasts; "dust_fool_big": true includes big
@@ -82,6 +87,8 @@ Settings (reframework/data/PawnTrickster/config.json, written on the first start
 - "debug": true forces a fixed test skill set at every load (for testing only).
 - "log": true writes every step to log.txt in this folder (for bug reports); "Enable debug logs"
   in the mod's REFramework panel does the same. Errors are written always.
+- "skill_watch": false stops the new setup after a skill change (the change then counts from the
+  next load); "skill_watch_wait" is the pause after the menu is closed (s).
 - "party_watch", "equip_by_game", "rule_drop", "cast_in_ready": switches back to older behaviour.
   You should not need them.
 - pawns.json in this folder is the mod's memory of your pawn's censer, skills and augments.
@@ -99,27 +106,35 @@ Known limits (beta)
 - In battle the decoy is summoned again about 6 s after enemies destroy it ("resummon_seconds").
 - Close to you the pawn is also close to what you are fighting; a low-level pawn can go down there.
   "regroup_stop" moves the point it dashes to, "regroup": false keeps it at range.
-- Skills you equip or remove on the pawn count for its combat rules from the next load, or after
-  disable / enable in the mod's panel.
+- Skills you equip or remove on the pawn at the Vocation Guild count without a reload (0.2.8): a
+  few seconds after you close the menu the mod sets the pawn up again; for about 20 s it fights like
+  a plain pawn, as after hiring a pawn. Not during a battle: then it waits for the battle's end.
 - Latching Effigy: with the incense thrown by the mod it latched on goblins level with or below
   the pawn in about half of the casts in testing (2 in 21 with the game's own throw), on rogues
   in 2 casts of 3, and never when cast turned away. A latch on a goblin lasts a few seconds.
 - Thrown smoke (the ball and the effigy incense) does not fly as far at a low frame rate: about
   7 m at 30 FPS, 13 m at 40. The mod only throws at enemies within that reach.
-- The smoke ball misses a moving enemy about one time in three.
+- The smoke ball bends only a little towards its target: an enemy running across its path can be
+  missed.
 - Fickle Floor needs a real drop between the pawn and the enemy (seen on a cliff edge);
   "floor_need_ledge": false allows it anywhere.
 - Returning to the title screen and loading again, and dying and choosing Load from Autosave,
   were tested: the pawn is set up again by itself. If your game crashes at the title with the
   mod and not without it, report it with "log": true.
-- Tested against goblins, rogues, phantoms, a cyclops and harpies, next to a Trickster Arisen
-  (the pawn then uses a decoy of its own), with a hired Mage, Thief, Archer or Fighter in the
+- Tested against goblins, hobgoblins, rogues, phantoms, a cyclops and harpies, next to a Trickster
+  Arisen (the pawn then uses a decoy of its own), with a hired Mage, Thief, Archer or Fighter in the
   party, with a censer given and equipped in the game's Equipment menu, and through a death and
   reload.
   Not tested: you and the pawn both casting Trickster skills at the same time; what other players
   see when they hire your pawn online.
 
 Fixed
+- 0.2.8: after a smoke throw the pawn's model could stay standing where it had thrown, while the
+  pawn itself went on unseen, until its next throw (0.2.6 and 0.2.7). Skills changed at the
+  Vocation Guild are used without a reload. Dragon's Delusion, Delusory Screen and Latching
+  Effigy no longer start right behind another costly cast, nor Aromatic Rally right behind
+  another Rally (the pawn ran out of stamina). The smoke ball is no longer thrown at enemies in
+  the air (it missed most of them).
 - 0.2.7: errors of the mod went only to REFramework's log; log.txt now keeps them always, starts
   fresh at each game start (the one before: log.previous.txt) and can be switched on in the panel.
 - 0.2.6: Latching Effigy flew over small enemies standing level with the pawn or lower.

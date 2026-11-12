@@ -220,6 +220,14 @@ Test traps that cost hours:
   A shell is recognised by its owner and `<ShellParamId>`. `requestDestroyShell(request id)` takes one out safely.
 - **Shells move per frame.** The thrown smoke flew 13 m at 40 FPS and 7 m at 30 FPS before dying. Anything measured
   with projectiles depends on the frame rate of the run.
+- **Never write a character's transform from `re.on_frame`.** `re.on_frame` runs while the scene is locked for
+  rendering (between the engine stages `LockScene` and `EndRendering`). One `Transform.set_Rotation` there on the
+  pawn and the renderer keeps its old copy of that transform: the model stays drawn where it stood, still animated,
+  while the pawn itself (logic, collisions, shells) goes on unseen, for the rest of the session or until the next
+  such write (0.2.6 and 0.2.7 did this for the turn of a smoke throw). Queue the value and write it in
+  `re.on_pre_application_entry("LateUpdateBehavior", ...)` (`V.turn_apply`, `st.dust_yaw`). To detect it, compare
+  the pawn's root with its hip joint **inside `re.on_frame`** (`tools/lua/modelcheck.lua`): read from the console,
+  which runs at `LateUpdateBehavior`, the two always agree.
 - **Cooldown timers are real time.** A decision wrapper's `CooldownTimer` loses 60 units a second at any frame rate
   (2.0 a frame at 30 FPS, measured with `lua/timerrate.lua`); `_Cooldown` is in seconds. The opposite was written
   down here once from an assumption: measure before you write a mechanism down.
@@ -360,21 +368,23 @@ in the script's first line. In texts meant for players the pawn is "it".
 
 ## 9. Open problems (good first targets)
 
-- **The dust attack's swing, and whether the pawn's model is drawn right (stopped mid-work, 2026-11-11).** The player
-  wants the pawn to swing its censer and the ball to leave from it at the end of the swing. HEAD plays the throw by
-  hand (`Job09_ThrowSmoke`), which is not that. `docs/v48m_wip.patch` switches to `Job09_MoveSmokeAttack` (the censer
-  swung round on its chain; `Job09_DashSmokeAttack` is a low sweep) and lets the ball go when the swing's own smoke
-  shell is registered. In most clips of that work the pawn's model stood frozen in one pose or was not drawn while
-  the ball left from where the pawn really was, and the player saw a stuck model in the game too. Three causes were
-  named and none is proven (a request for `NormalLocomotion`, destroying the swing's shell, the capture camera): read
-  the v48m section of `docs/DEVELOPMENT.md` first. Start by filming through the game's own camera.
-- **The capture camera may lie about characters.** `tools/lua/cam.lua` overwrites the camera transform at `LockScene`,
-  after the game has decided what its own camera sees. A character the game's camera does not look at was seen
-  frozen, left behind or missing in clips. Until that is settled, judge a character's animation only on clips made
-  with `--nocam` with the Arisen's camera on the scene, or move the camera earlier in the frame and prove it.
-- **The dust ball's hit rate and cadence.** About two balls in three hit (moving goblins dodge a homing shell;
-  leading the target was not tried), and the pawn threw one every 15 s in a solo test fight at 30 FPS. The rule's
-  cooldown is 4 s; what else holds it back was not measured after the last change.
+- **The dust attack's swing (stopped mid-work, 2026-11-11).** The player wants the pawn to swing its censer and the
+  ball to leave from it at the end of the swing. HEAD plays the throw by hand (`Job09_ThrowSmoke`), which is not
+  that. `docs/v48m_wip.patch` switches to `Job09_MoveSmokeAttack` (the censer swung round on its chain;
+  `Job09_DashSmokeAttack` is a low sweep) and lets the ball go when the swing's own smoke shell is registered. That
+  work stopped on a pawn model that stood frozen or was not drawn. The cause is found and fixed in 0.2.8 (the turn
+  of the throw was written from `re.on_frame`, see section 5), so the swing can be taken up again: check the model
+  with `tools/lua/modelcheck.lua` after every throw.
+- **Characters outside the game's own camera.** The game hides a character its camera does not look at and animates
+  it at a quarter of the rate (`InCameraChecker`, `CharacterMeshVisibleToggler`,
+  `get_MotionUpdateIntervalFrameByLODProcessor`). `tools/lua/cam.lua` moves the camera transform at `LockScene`,
+  after the game has decided what its camera sees, so a clip made with it can show such a character frozen or
+  missing. That is the capture, not the mod: keep the capture camera behind the pawn, close to the game's own view.
+- **The dust ball's cadence.** On the ground 8 or 9 balls in 10 hit at 30 FPS (leading the target was tried and
+  bought nothing; flying enemies are left alone since 0.2.8). The pawn still throws less often than the rule's 4 s
+  cooldown allows; what else holds it back was not measured.
+- **Short moments without stamina.** Since the cast spacing of 0.2.8 they are a second or two (they were 5-7 s);
+  they still happen in long goblin fights.
 - **The mod's own tick counts frames.** The gates are worked out every 10 frames (0.17 s at 60 FPS, 0.33 s at 30).
   A tick on real time would make low frame rates react as fast; it was left alone because every test so far ran
   with this one.
