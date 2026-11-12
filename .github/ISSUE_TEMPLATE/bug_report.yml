@@ -1,0 +1,50 @@
+name: Bug report
+description: Something the pawn or the mod does wrong, or a crash
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before you reproduce the problem: delete `reframework/data/PawnTrickster/log.txt` (the mod only ever adds to it),
+        set `"log": true` in `reframework/data/PawnTrickster/config.json`, and start the game.
+        After a crash, collect the files **before** starting the game again: the next launch writes over
+        `re2_framework_log.txt` and can replace the crash dump.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what you expected
+      description: What the pawn did, the enemies, in or out of battle, and the time on your clock when it happened (every log line starts with it).
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Mod version
+      description: The first line of reframework/data/PawnTrickster/README.txt
+    validations:
+      required: true
+  - type: input
+    id: party
+    attributes:
+      label: Party
+      description: Hired pawns and their vocations, your own vocation
+  - type: textarea
+    id: mods
+    attributes:
+      label: Other mods
+      description: Mods that change pawns, skills, AI or combat (Skill Maker, pawn AI mods, ...)
+  - type: checkboxes
+    id: files
+    attributes:
+      label: Attached files
+      description: Drag them into the box below.
+      options:
+        - label: reframework/data/PawnTrickster/log.txt (with "log" true)
+        - label: reframework/data/PawnTrickster/config.json and pawns.json
+        - label: re2_framework_log.txt from the game folder
+        - label: after a crash, reframework_crash.dmp from the game folder (zip it), if there is one
+  - type: textarea
+    id: attachments
+    attributes:
+      label: Files and video
+      description: The files above, and a short video of the moment if you have one.

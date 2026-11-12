@@ -1,4 +1,5 @@
 Trickster Main Pawn 0.2.6 (beta) - REFramework script
+Version 2 on Nexus. The numbers 0.x.y in this file are the author's build numbers.
 
 What it does
 - At every save load your main pawn becomes a Trickster and holds a censer.
@@ -15,9 +16,9 @@ What it does
   When Rally is ready and nobody is that close, the pawn dashes back to you (to about 5-8 m) and
   casts it there.
 - Between casts it keeps its distance and circles, and (0.2.6) it throws smoke: turned to an
-  enemy 4-14 m away it swings the censer (the Trickster's own throwing move), and at the end of
-  the swing a puff of incense smoke flies to that enemy. A hit does a little damage (20 + 5 for each level of the pawn) and does not draw
-  the enemy's attention to the pawn. While the decoy is out, the enemy is fooled for 6 s: it
+  enemy 4-14 m away it throws a puff of incense smoke at it, by hand (the Trickster's own
+  throwing move). A hit does a little damage (20 + 5 for each level of the pawn) and does not
+  draw the enemy's attention to the pawn. While the decoy is out, the enemy is fooled for 6 s: it
   lets go of your pawns and goes for the decoy. It is a filler for the time no skill is due: in a
   test fight the pawn threw one about every 15 s, and two in three hit.
 - Rank 4 to 7 skills, each only when equipped:
@@ -67,18 +68,15 @@ Settings (reframework/data/PawnTrickster/config.json, written on the first start
 - "effigy_near", "effigy_far" (m), "effigy_aim_deg": where an enemy has to be for Latching Effigy.
   "effigy_rethrow": false gives the throw back to the game; "effigy_small_rise": 1.7 then makes
   the pawn cast it at small enemies only when they stand higher (what 0.2.5 did).
-- "dust": false switches the smoke ball off. "dust_action": the move it is thrown with
-  ("Job09_ThrowSmoke", the full swing; "Job09_ShortSmokeAttack" is a flick of the wrist). "dust_damage": its damage (0 = "dust_damage_base"
+- "dust": false switches the smoke ball off. "dust_damage": its damage (0 = "dust_damage_base"
   + "dust_damage_level" for each level of the pawn). "dust_cooldown" (s): the pause between two.
   "dust_near", "dust_far" (m): how far the enemy may be. "dust_safe" (m): no swing while an enemy
   is closer to the pawn than this. "dust_no_aggro": false lets a hit draw the enemy's attention,
   like the game's own thrown smoke does. "dust_fool": false stops the hit from turning the enemy
   to the decoy; "dust_fool_seconds" is how long that lasts; "dust_fool_big": true includes big
-  enemies. The smoke of this attack is kept small: the big cloud the censer swing throws by
-  itself is taken out ("dust_swing_shell": true gives it back), and the puff at the impact and
-  the swing's smoke fade out after "dust_hit_life" / "dust_swing_life" seconds (0.5 / 0.3; 0 = the
-  game's full cloud). "dust_fx_alpha": how opaque what is left is (1 = as the game draws it).
-  The thin wisp that follows the censer at all times is the weapon's own and is not changed.
+  enemies. The burst where the ball lands is small and fades out after "dust_hit_life" seconds
+  (0.5; 0 = the game's full burst). "dust_action" is the move the ball is thrown with; leave it
+  as it is (the other moves are unfinished work).
 - "resummon_seconds": the pause before a destroyed decoy is summoned again in battle (s).
   "resummon_calm": true brings it back out of battle as well (0.2.3 and earlier did).
 - "debug": true forces a fixed test skill set at every load (for testing only).
@@ -132,6 +130,21 @@ Fixed
 Other mods
 - Skill Maker and other mods that change the Arisen's skills are left alone: this script only
   touches the main pawn.
+
+Bug reports
+1. Delete reframework/data/PawnTrickster/log.txt if it is there (the mod only ever adds to it, it
+   is never emptied), then set "log": true in config.json and start the game.
+2. Play until the problem happens and note the time on your clock (every log line starts with it).
+3. If the game crashed, collect the files BEFORE starting the game again: the next launch writes
+   over re2_framework_log.txt and can replace the crash dump.
+4. Send, on Nexus (Bugs tab) or GitHub (Issues):
+   - reframework/data/PawnTrickster/log.txt, config.json and pawns.json (all in this folder)
+   - re2_framework_log.txt from the game folder (REFramework's own log: script errors are there)
+   - after a crash, reframework_crash.dmp from the game folder, if there is one
+   - what the pawn did and what you expected, the time, the enemies, who was in the party, the
+     first line of this file, and your other mods that change pawns, skills or AI
+   A short video of the moment helps a lot.
+5. Set "log" back to false afterwards: the log grows quickly in fights.
 
 Source and bug reports: https://github.com/jlrouzies-fr/DD2-Trickster-Pawn
 

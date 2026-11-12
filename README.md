@@ -40,9 +40,18 @@ To uninstall: REFramework menu > Script Generated UI > Pawn Trickster > disable,
 
 ## Reporting a bug
 
-Set `"log": true` in `config.json`, reproduce the problem, and attach `reframework/data/PawnTrickster/log.txt`
-to an issue together with: what you saw, where (enemy types, party, in or out of battle), and your other mods that
-touch pawns or AI. A short video or the time of day in the log helps to find the moment.
+1. Delete `reframework/data/PawnTrickster/log.txt` if it is there (the mod only ever adds to it), set
+   `"log": true` in `config.json`, and start the game.
+2. Play until the problem happens and note the time on your clock (every log line starts with it).
+3. After a crash, collect the files **before** starting the game again: the next launch writes over
+   `re2_framework_log.txt` and can replace the crash dump.
+4. Open an [issue](../../issues/new?template=bug_report.yml) (or post in the Nexus Bugs tab) and attach:
+   - `reframework/data/PawnTrickster/log.txt`, `config.json` and `pawns.json`
+   - `re2_framework_log.txt` from the game folder (REFramework's log: script errors are there)
+   - after a crash, `reframework_crash.dmp` from the game folder, if there is one
+   - what the pawn did and what you expected, the time, the enemies, the party, the mod version (first line of
+     `README.txt`) and your other mods that touch pawns, skills or AI. A short video of the moment helps a lot.
+5. Set `"log"` back to `false` afterwards: the log grows quickly in fights.
 
 ## Contributing
 
